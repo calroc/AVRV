@@ -1,0 +1,4 @@
+This is a simple sort-of Forth system for AVR microcontrollers. It's
+written for the Pololu Baby Orangutan robot controller [1]
+
+[1] http://www.pololu.com/catalog/product/1220
