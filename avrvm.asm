@@ -36,14 +36,10 @@
 .def word_temp = r17
 
 ; Registers used by FIND word.
-.def find_temp_0 = r10
-.def find_temp_1 = r11
-.def find_temp_2 = r12
-.def find_temp_3 = r13
-.def find_low = r18
-.def find_high = r19
-.def find_current_low = r20
-.def find_current_high = r21
+.def find_buffer_char = r10
+.def find_name_char = r11
+.def find_temp_offset = r12
+.def find_temp_length = r13
 
 ; Registers used by "to PFA" word.
 .def tpfa_temp_high = r22
@@ -333,64 +329,75 @@ FIND: ; ----------------------------------------------------------------
   .dw DATA_FETCH
   .db 4, "find"
 FIND_PFA:
-  ldi ZH, high(Latest_mem) ; Get the address of the latest word from the
-  ldi ZL, low(Latest_mem)  ; heap.
-  ld find_low, Z+ ; And put it into find_high:find_low register pair.
-  ld find_high, Z
-_look_up_word:
-  movw Z, find_high:find_low ; address of word is in Z and find_high:find_low.
-  movw find_current_high:find_current_low, find_high:find_low ; Save current addy
-  or find_low, find_high ; check for nullity
-  breq _not_in_dictionary
+  ; TOS holds the offset in the buffer of the word to search for and TOSL
+  ; holds the length.
+  mov find_temp_offset, TOS
+  mov find_temp_length, TOSL
+  ldi ZH, high(Latest_mem)
+  ldi ZL, low(Latest_mem)
+  ld TOSL, Z+
+  ld TOS, Z
 
-  ; Use X (TOS,TOSL) to prepare the address (left shift it.)
-  ; FIXME: Why not just store the address already shifted?
+_look_up_word:
+; LFA in TOS:TOSL, Z is free
+
+; Check if TOS:TOSL == 0x0000
+  cpi TOSL, 0
+  brne _non_zero
+  cpse TOSL, TOS ; ComPare Skip Equal
+  rjmp _non_zero
+  ; if TOS:TOSL == 0x0000 we're done.
+  ldi TOS, 0xff ; consume TOS/TOSL and return 0xffff (we don't have that
+  ldi TOSL, 0xff ; much RAM so this is not a valid address value.)
+  ret
+
+_non_zero:
+  ; Save current addy
   pushdownw
-  movw X, Z
+  ; now stack has ( - LFA, LFA)
+
+  ; Load Link Field Address of next word in the dictionary
+  ; into the X register pair.
   rcall LEFT_SHIFT_WORD_PFA
   movw Z, X
-  popupw
+  lpm TOSL, Z+
+  lpm TOS, Z+
+  ; now stack has ( - LFA_next, LFA_current)
 
-  lpm find_low, Z+ ; Load Link Field Address of next word in the dictionary
-  lpm find_high, Z+ ; into the find_high:find_low register pair.
   lpm Working, Z+ ; Load length-of-name byte into a register
+  cp Working, find_temp_length
+  breq _same_length
 
-  ; compare it to TOSL (length of word-name we're looking for.)
-  cp TOSL, Working
-  brne _look_up_word ; Well, it ain't this one...
+  ; Well, it ain't this one...
+  ; ditch LFA_current
+  sbiw Y, 2
+  rjmp _look_up_word
 
+_same_length:
   ; If they're the same length walk through both and compare them ;
-  ; character by character. Buffer offset is in TOS, Name address is in Z,
-  ; length is in Working and TOSL.
+  ; character by character.
+  ;
+  ; Buffer offset is in find_temp_offset
+  ; length is in Working and find_temp_length
+  ; Z holds current word's name's first byte's address in program RAM.
+  ; TOS:TOSL have the address of the next word's LFA.
+  ; stack has ( - LFA_next, LFA_current)
 
-  ; We clobber TOSL to fetch from the buffer using X and we decrement
-  ; Working to track our loop iterations so we need another copy of
-  ; length to reset TOSL with if we have to go to the next word.
-  mov find_temp_2, Working
-  mov find_temp_3, TOS ; We increment X as we scan the string, so save this too.
-
-
+  ; Put address of search term in buffer into X (TOS:TOSL).
+  pushdownw
   ldi TOS, high(buffer) ; Going to look up bytes in the buffer.
-  mov TOSL, find_temp_3
+  mov TOSL, find_temp_offset
+  ; stack ( - &search_term, LFA_next, LFA_current)
 
 _compare_name_and_target_byte:
-
-  ; 1. Get char from buffer into find_temp_0
-  ld find_temp_0, X+
-
-  ; 2. Get char from word name into find_temp_1
-  lpm find_temp_1, Z+
-
-  ; 3. Compare them.
-  cp find_temp_0, find_temp_1
+  ld find_buffer_char, X+ ; from buffer
+  lpm find_name_char, Z+ ; from program RAM
+  cp find_buffer_char, find_name_char
   breq _okay_dokay
 
   ; not equal, clean up and go to next word.
-  ;
-  ; mov TOSL, find_temp_2 ; replace target length in TOSL.
-  ; mov TOS, find_temp_3 ; and initial offset in TOS.
-  ;
-  movw X, find_temp_3:find_temp_2 ; replace target length in TOSL and initial offset in TOS.
+  popupw ; ditch search term address
+  sbiw Y, 2 ; ditch LFA_current
   rjmp _look_up_word
 
 _okay_dokay:
@@ -400,13 +407,8 @@ _okay_dokay:
 
   ; If we get here we've checked that every character in the name and the
   ; target term match.
-  movw X, find_current_high:find_current_low
-  ret
-
-_not_in_dictionary:
-  ldi TOS, 0xff ; consume TOS/TOSL and return 0xffff (we don't have that
-  ldi TOSL, 0xff ; much RAM so this is not a valid address value.)
-  popup
+  popupw ; ditch search term address
+  popupw ; ditch LFA_next
   ret
 
 TPFA: ; ----------------------------------------------------------------
