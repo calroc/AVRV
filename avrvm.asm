@@ -500,8 +500,13 @@ COLON_DOES_PFA:
 _aaagain:
   push ZL
   push ZH
-  ld Working, Z+
-  ld ZH, Z
+  pushdownw
+  movw X, Z
+  rcall LEFT_SHIFT_WORD_PFA
+  movw Z, X
+  popupw
+  lpm Working, Z+
+  lpm ZH, Z
   mov ZL, Working
   icall
   pop ZH
@@ -577,7 +582,7 @@ COLON_PFA:
 ; Variables and system variable words.
 
 VAR_DOES: ; ------------------------------------------------------------
-  .dw RBRAC
+  .dw COLON
   .db 8, "var_does"
 VAR_DOES_PFA:
   ; Get the address of the calling variable word's parameter field off
