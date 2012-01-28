@@ -193,7 +193,7 @@ CHECKIT:
   rcall INTERPRET_PFA
   ret
 
-COMMAND: .db 7, " dup @ "
+COMMAND: .db 9, " tcd : b "
 
 FILL_BUFFER:
   ldi Working, low(buffer)
@@ -325,8 +325,49 @@ DATA_FETCH_PFA:
   ld TOS, Z ; Get byte from heap.
   ret
 
-FIND: ; ----------------------------------------------------------------
+CREATE: ; --------------------------------------------------------------
   .dw DATA_FETCH
+  .db 6, "create"
+CREATE_PFA:
+  ; offset in TOS, length in TOSL, of new word's name
+
+  ldi ZL, low(Here_mem)
+  ldi ZH, high(Here_mem)
+  ld ZL, Z
+  ldi ZH, high(heap)
+  ; Z now points to next free byte on heap.
+
+  adiw Z, 2 ; reserve space for the link to Latest
+
+  st Y+, TOSL ; store for later
+  mov word_temp, TOSL ; count
+  st Z+, TOSL ; store name length in compiling word
+  mov TOSL, TOS
+  ldi TOS, high(buffer)
+  ; X now points to the name in the buffer, Z to the destination
+
+_create_char_xfer:
+  ld Working, X+
+  st Z+, Working
+  dec word_temp
+  brne _create_char_xfer
+
+  ld TOSL, -Y ; pop length
+  lsr TOSL
+  brcs _word_aligned ; odd number, no alignment byte needed
+  clr TOSL
+  st Z+, TOSL ; write alignment byte
+_word_aligned:
+  ; The name has been laid down in SRAM.
+  ; Write ZL to Here_mem and we're done.
+  ldi TOSL, low(Here_mem)
+  ldi TOS, high(Here_mem)
+  st X, ZL
+  popupw ; ditch offset and (right-shifted) length
+  ret
+
+FIND: ; ----------------------------------------------------------------
+  .dw CREATE
   .db 4, "find"
 FIND_PFA:
   ; TOS holds the offset in the buffer of the word to search for and TOSL
@@ -450,12 +491,93 @@ _byee:
   popupw ; ditch the "error message"
   ret
 
+COLON_DOES: ; ----------------------------------------------------------
+  .dw INTERPRET
+  .db 10, "colon_does"
+COLON_DOES_PFA:
+  pop ZH
+  pop ZL
+_aaagain:
+  push ZL
+  push ZH
+  ld Working, Z+
+  ld ZH, Z
+  mov ZL, Working
+  icall
+  pop ZH
+  pop ZL
+  adiw Z, 1
+  rjmp _aaagain
+
+EXIT: ; ----------------------------------------------------------------
+  .dw COLON_DOES
+  .db 4, "exit"
+EXIT_PFA:
+  ; ditch return PC from the icall and the stored pointer to next PFA.
+  in ZL, SPL
+  in ZH, SPH
+  adiw Z, 4
+  out SPL, ZL
+  out SPH, ZH
+  ret
+
+TEST_COL_D: ; ----------------------------------------------------------
+  .dw EXIT
+  .db 3, "tcd"
+TCD_PFA:
+  rcall COLON_DOES_PFA
+  .dw DUP_PFA
+  .dw EXIT_PFA
+
+LBRAC: ; ---------------------------------------------------------------
+  .dw TEST_COL_D
+  .db 1, "["
+LBRAC_PFA:
+  ldi ZL, low(State_mem)
+  ldi ZH, high(State_mem)
+  ldi Working, 0x00
+  st Z, Working
+  ret
+
+RBRAC: ; ---------------------------------------------------------------
+  .dw LBRAC
+  .db 1, "]"
+RBRAC_PFA:
+  ldi ZL, low(State_mem)
+  ldi ZH, high(State_mem)
+  ldi Working, 0x01
+  st Z, Working
+  ret
+
+COLON:
+  .dw RBRAC
+  .db 1, ":"
+COLON_PFA:
+  rcall WORD_PFA
+  rcall CREATE_PFA
+  ; Write COLON_DOES_PFA to HERE and update HERE
+  ldi ZL, low(Here_mem)
+  ldi ZH, high(Here_mem)
+  ld ZL, Z
+  ldi ZH, high(heap)
+  ldi Working, low(COLON_DOES_PFA)
+  st Z+, Working
+  ldi Working, high(COLON_DOES_PFA)
+  st Z+, Working
+  ; Write ZL to Here_mem
+  mov Working, ZL
+  ldi ZL, low(Here_mem)
+  ldi ZH, high(Here_mem)
+  st Z, Working
+  ; switch to compiling mode
+  rcall RBRAC_PFA
+  ret
 
 ;#######################################################################
 ; Variables and system variable words.
 
 VAR_DOES: ; ------------------------------------------------------------
-  .dw INTERPRET
+  .dw RBRAC
   .db 8, "var_does"
 VAR_DOES_PFA:
   ; Get the address of the calling variable word's parameter field off
