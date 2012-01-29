@@ -129,6 +129,11 @@ RESET:
   ldi YL, low(data_stack) ; Initialize Data Stack Pointer.
   ldi YH, high(data_stack)
 
+  ldi Working, 0x00 ; Set State to immediate (0).
+  ldi ZL, low(State_mem)
+  ldi ZH, high(State_mem)
+  st Z, Working
+
   ldi Working, low(Here_mem) + 1 ; Set HERE to point to just after itself.
   ldi ZL, low(Here_mem)
   ldi ZH, high(Here_mem)
@@ -516,7 +521,7 @@ INTERPRET_PFA:
   movw X, Z ; PFA on stack
   z_here
   st Z+, TOSL ; write PFA to 'here'
-  st Z, TOS
+  st Z+, TOS
   mov Working, ZL ; set here to, uh, here
   ldi ZL, low(Here_mem)
   ldi ZH, high(Here_mem)
