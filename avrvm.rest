@@ -1,4 +1,6 @@
-Bot Initial Draft MCP.
+=====================
+Bot Initial Draft MCP
+=====================
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -13,6 +15,11 @@ Bot Initial Draft MCP.
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+
+
+Definitions
+-----------
+
 Let's include the definitions for the ATmega328P::
 
   .nolist
@@ -24,5 +31,98 @@ Keep the top two items (bytes) on the stack in the X register.::
 
   .def TOS = r27 ; XH
   .def TOSL = r26 ; XL
+
+Y register is our Data Stack Pointer.
+Z register will be used for diggin around in the dictionary.
+
+Buffer pointers::
+
+  .def Current_key = r14
+  .def Buffer_top = r15
+
+We need a general use register::
+
+  .def Working = r16
+
+Register used by WORD word.::
+
+  .def word_temp = r17
+
+Registers used by FIND word.::
+
+  .def find_buffer_char = r10
+  .def find_name_char = r11
+  .def find_temp_offset = r12
+  .def find_temp_length = r13
+
+Registers used by "to PFA" word.::
+
+  .def tpfa_temp_high = r22
+  .def tpfa_temp_low = r23
+
+This flag is used in the name-length byte of a word definition header::
+
+  .equ IMMED = 0x80
+
+
+
+Data (SRAM) Organization
+------------------------
+
+Storage for User Variables (Heap)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+::
+
+  .dseg
+
+Create a 256-byte heap at the bottom of RAM and allot some initial
+system variables. On the ATmega328P the SRAM proper begins at 0x100.::
+
+  heap: .org 0x0100
+  State_mem: .byte 1
+  Latest_mem: .byte 2
+  Here_mem: .byte 1
+
+
+Input Buffer
+~~~~~~~~~~~~
+
+Next we have a buffer for input. For now, 128 bytes.::
+
+  .org 0x0200
+  buffer: .byte 0x80
+
+
+Data Stack
+~~~~~~~~~~
+
+The Parameter (Data) Stack begins just after the buffer and grows upward
+towards the Return Stack at the top of RAM. Note that the first two bytes
+of stack are kept in the X register. Due to this the initial two bytes of
+the data stack will be filled with whatever was in X before the first
+push, unless you load X (i.e. TOS and Just-Under-TOS) "manually" before
+dropping into the interpreter loop.::
+
+  data_stack: .org 0x0280
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

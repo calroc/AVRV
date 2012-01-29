@@ -1,0 +1,7 @@
+@import url(html4css1.css);
+
+pre.literal-block {
+  border: 1px solid #000;
+  background-color: #F0D1B2;
+  padding: 0.5em;
+}

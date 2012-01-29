@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="Docutils 0.6: http://docutils.sourceforge.net/" />
+<title>Bot Initial Draft MCP</title>
+<style type="text/css">
+
+@import url(html4css1.css);
+
+pre.literal-block {
+  border: 1px solid #000;
+  background-color: #F0D1B2;
+  padding: 0.5em;
+}
+
+</style>
+</head>
+<body>
+<div class="document" id="bot-initial-draft-mcp">
+<h1 class="title">Bot Initial Draft MCP</h1>
+
+<blockquote>
+<p>This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.</p>
+<p>This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.</p>
+<p>You should have received a copy of the GNU General Public License
+along with this program.  If not, see &lt;<a class="reference external" href="http://www.gnu.org/licenses/">http://www.gnu.org/licenses/</a>&gt;.</p>
+</blockquote>
+<div class="section" id="definitions">
+<h1>Definitions</h1>
+<p>Let's include the definitions for the ATmega328P:</p>
+<pre class="literal-block">
+.nolist
+.include &quot;m328Pdef.inc&quot;
+.list
+.listmac
+</pre>
+<p>Keep the top two items (bytes) on the stack in the X register.:</p>
+<pre class="literal-block">
+.def TOS = r27 ; XH
+.def TOSL = r26 ; XL
+</pre>
+<p>Y register is our Data Stack Pointer.
+Z register will be used for diggin around in the dictionary.</p>
+<p>Buffer pointers:</p>
+<pre class="literal-block">
+.def Current_key = r14
+.def Buffer_top = r15
+</pre>
+<p>We need a general use register:</p>
+<pre class="literal-block">
+.def Working = r16
+</pre>
+<p>Register used by WORD word.:</p>
+<pre class="literal-block">
+.def word_temp = r17
+</pre>
+<p>Registers used by FIND word.:</p>
+<pre class="literal-block">
+.def find_buffer_char = r10
+.def find_name_char = r11
+.def find_temp_offset = r12
+.def find_temp_length = r13
+</pre>
+<p>Registers used by &quot;to PFA&quot; word.:</p>
+<pre class="literal-block">
+.def tpfa_temp_high = r22
+.def tpfa_temp_low = r23
+</pre>
+<p>This flag is used in the name-length byte of a word definition header:</p>
+<pre class="literal-block">
+.equ IMMED = 0x80
+</pre>
+</div>
+<div class="section" id="data-sram-organization">
+<h1>Data (SRAM) Organization</h1>
+<div class="section" id="storage-for-user-variables-heap">
+<h2>Storage for User Variables (Heap)</h2>
+<pre class="literal-block">
+.dseg
+</pre>
+<p>Create a 256-byte heap at the bottom of RAM and allot some initial
+system variables. On the ATmega328P the SRAM proper begins at 0x100.:</p>
+<pre class="literal-block">
+heap: .org 0x0100
+State_mem: .byte 1
+Latest_mem: .byte 2
+Here_mem: .byte 1
+</pre>
+</div>
+<div class="section" id="input-buffer">
+<h2>Input Buffer</h2>
+<p>Next we have a buffer for input. For now, 128 bytes.:</p>
+<pre class="literal-block">
+.org 0x0200
+buffer: .byte 0x80
+</pre>
+</div>
+<div class="section" id="data-stack">
+<h2>Data Stack</h2>
+<p>The Parameter (Data) Stack begins just after the buffer and grows upward
+towards the Return Stack at the top of RAM. Note that the first two bytes
+of stack are kept in the X register. Due to this the initial two bytes of
+the data stack will be filled with whatever was in X before the first
+push, unless you load X (i.e. TOS and Just-Under-TOS) &quot;manually&quot; before
+dropping into the interpreter loop.:</p>
+<pre class="literal-block">
+data_stack: .org 0x0280
+</pre>
+</div>
+</div>
+</div>
+</body>
+</html>
