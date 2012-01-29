@@ -201,7 +201,7 @@ CHECKIT:
   rcall INTERPRET_PFA
   ret
 
-COMMAND: .db 9, " tcd : b "
+COMMAND: .db 17, " tcd : b dup [ ] "
 
 FILL_BUFFER:
   ldi Working, low(buffer)
@@ -409,6 +409,7 @@ _non_zero:
   ; now stack has ( - LFA_next, LFA_current)
 
   lpm Working, Z+ ; Load length-of-name byte into a register
+  andi Working, 0x7f ; IMM_MASK
   cp Working, find_temp_length
   breq _same_length
 
@@ -466,6 +467,7 @@ TPFA_PFA:
   movw Z, X         ; and put it into our prog-mem-addressing Z register.
   movw X, tpfa_temp_high:tpfa_temp_low
   lpm Working, Z    ; get the length.
+  andi Working, 0x7f; IMM_MASK
                     ; We need to map from length in bytes to length in words
   lsr Working       ; while allowing for the padding bytes in even-length names.
   inc Working       ; n <- (n >> 1) + 1
@@ -589,7 +591,7 @@ TCD_PFA:
 
 LBRAC: ; ---------------------------------------------------------------
   .dw TEST_COL_D
-  .db 1, "["
+  .db (1 & IMMED), "["
 LBRAC_PFA:
   ldi ZL, low(State_mem)
   ldi ZH, high(State_mem)
