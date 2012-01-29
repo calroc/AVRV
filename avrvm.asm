@@ -45,6 +45,7 @@
 .def tpfa_temp_high = r22
 .def tpfa_temp_low = r23
 
+.equ IMMED = 0x80
 
 ;#######################################################################
 ; Storage for variables in the SRAM.
@@ -175,6 +176,13 @@ RESET:
   ld TOSL, -Y
 .ENDMACRO
 
+; Load Z register pair with SRAM address of next free byte in heap.
+.MACRO z_here
+  ldi ZL, low(Here_mem)
+  ldi ZH, high(Here_mem)
+  ld ZL, Z
+  ldi ZH, high(heap)
+.ENDMACRO
 
 ;#######################################################################
 MAIN:
@@ -331,12 +339,7 @@ CREATE: ; --------------------------------------------------------------
 CREATE_PFA:
   ; offset in TOS, length in TOSL, of new word's name
 
-  ldi ZL, low(Here_mem)
-  ldi ZH, high(Here_mem)
-  ld ZL, Z
-  ldi ZH, high(heap)
-  ; Z now points to next free byte on heap.
-
+  z_here ; Z now points to next free byte on heap.
   adiw Z, 2 ; reserve space for the link to Latest
 
   st Y+, TOSL ; store for later
@@ -482,17 +485,67 @@ INTERPRET_PFA:
   rcall FIND_PFA ; find it in the dictionary, (X <- LFA)
   cpi TOS, 0xff
   breq _byee
+  pushdownw ; save a copy of LFA on the stack
+
+  ; Calculate PFA and save it in Z.
   rcall TPFA_PFA ; get the PFA address (X <- PFA)
-  movw Z, X ; put it in Z for indirect call
-  popupw ; clear the stack for the "client" word
+  movw Z, X
+
+  ; Check if the word is flagged as immediate.
+  popupw ; get the LFA again
+  st Y+, ZL ; save PFA on stack to clear Z for IMMEDIATE_P
+  st Y+, ZH
+  rcall IMMEDIATE_P_PFA ; stack is one (byte) cell less ( LFA:LFA - imm? )
+  mov ZH, TOSL ; restore PFA to Z from stack
+  ld ZL, -Y
+  breq _execute_it
+
+  ; word is not immediate, check State and act accordingly
+  st Y+, TOSL ; free up X register pair (Z still holds PFA)
+  ldi TOSL, low(State_mem)
+  ldi TOS, high(State_mem)
+  ld TOS, X
+  popup
+  cpi TOS, 0x00 ; immediate mode?
+  breq _execute_it
+
+  ; compile mode
+  st Y+, TOSL
+  movw X, Z ; PFA on stack
+  z_here
+  st Z+, TOSL ; write PFA to 'here'
+  st Z, TOS
+  mov Working, ZL ; set here to, uh, here
+  ldi ZL, low(Here_mem)
+  ldi ZH, high(Here_mem)
+  st Z, Working
+  ret
+
+_execute_it:
+  mov TOS, TOSL ; clear the stack for the "client" word
+  popup
   icall ; and execute it.
   rjmp INTERPRET_PFA
 _byee:
   popupw ; ditch the "error message"
   ret
 
-COLON_DOES: ; ----------------------------------------------------------
+IMMEDIATE_P:
   .dw INTERPRET
+  .db 4, "imm?"
+IMMEDIATE_P_PFA:
+  ; LFA on stack
+  adiw X, 1
+  rcall LEFT_SHIFT_WORD_PFA
+  movw Z, X
+  lpm TOS, Z
+  popup
+  andi TOS, IMMED
+  cpi TOS, IMMED
+  ret
+
+COLON_DOES: ; ----------------------------------------------------------
+  .dw IMMEDIATE_P
   .db 10, "colon_does"
 COLON_DOES_PFA:
   pop ZH
@@ -561,10 +614,7 @@ COLON_PFA:
   rcall WORD_PFA
   rcall CREATE_PFA
   ; Write COLON_DOES_PFA to HERE and update HERE
-  ldi ZL, low(Here_mem)
-  ldi ZH, high(Here_mem)
-  ld ZL, Z
-  ldi ZH, high(heap)
+  z_here
   ldi Working, low(COLON_DOES_PFA)
   st Z+, Working
   ldi Working, high(COLON_DOES_PFA)
