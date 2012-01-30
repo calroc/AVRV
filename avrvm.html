@@ -239,6 +239,18 @@ st Z+, Working
 ldi Working, high(CURRENT_KEY_WORD)
 st Z, Working
 </pre>
+<p>Initialize the USART. This could be broken out into words but I'm eager
+to get up and running:</p>
+<pre class="literal-block">
+ldi r17, high(520) ; 2400 baud w/ 20Mhz osc
+ldi r16, low(520)
+sts UBRR0H, r17
+sts UBRR0L, r16
+; The chip defaults to 8N1 so we won't set it here even though we
+; should.
+ldi r16, (1 &lt;&lt; TXEN0) | (1 &lt;&lt; RXEN0) ; Enable transmit/receive
+sts UCSR0B, r16
+</pre>
 <p>Re-enable interrupts:</p>
 <pre class="literal-block">
 sei
@@ -340,18 +352,30 @@ KEY:
   .dw DUP
   .db 3, &quot;key&quot;
 KEY_PFA:
-  cp Current_key, Buffer_top ; If they're the same we're out of input data.
-  breq Out_of_input
-  ldi ZH, high(buffer) ; Load the char's address in the buffer into Z.
-  mov ZL, Current_key
+  sbis UCSR0A, RXC0
+  rjmp KEY_PFA
   rcall DUP_PFA
-  ld TOS, Z ; Get char from buffer
-  inc Current_key
+  lds TOS, UDR0
+_echo:
+  sbis UCSR0A, UDRE0
+  rjmp _echo
+  sts UDR0, TOS
   ret
-Out_of_input:
-  rcall DUP_PFA
-  ldi TOS, 0x15 ; ASCII NACK byte.
-  ret
+</pre>
+<p>The old version of key:</p>
+<pre class="literal-block">
+;   cp Current_key, Buffer_top ; If they're the same we're out of input data.
+;   breq Out_of_input
+;   ldi ZH, high(buffer) ; Load the char's address in the buffer into Z.
+;   mov ZL, Current_key
+;   rcall DUP_PFA
+;   ld TOS, Z ; Get char from buffer
+;   inc Current_key
+;   ret
+; Out_of_input:
+;   rcall DUP_PFA
+;   ldi TOS, 0x15 ; ASCII NACK byte.
+;   ret
 </pre>
 <p>word:</p>
 <pre class="literal-block">

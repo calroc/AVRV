@@ -237,6 +237,18 @@ Initialize Latest (current_key is Latest right now.)::
   ldi Working, high(CURRENT_KEY_WORD)
   st Z, Working
 
+Initialize the USART. This could be broken out into words but I'm eager
+to get up and running::
+
+  ldi r17, high(520) ; 2400 baud w/ 20Mhz osc
+  ldi r16, low(520)
+  sts UBRR0H, r17
+  sts UBRR0L, r16
+  ; The chip defaults to 8N1 so we won't set it here even though we
+  ; should.
+  ldi r16, (1 << TXEN0) | (1 << RXEN0) ; Enable transmit/receive
+  sts UCSR0B, r16
+
 Re-enable interrupts::
 
   sei
@@ -299,6 +311,8 @@ This routine takes the command line above and copies it into the input buffer::
 Let's make words
 ~~~~~~~~~~~~~~~~
 
+
+
 Data Stack
 ^^^^^^^^^^
 
@@ -342,18 +356,33 @@ key::
       .dw DUP
       .db 3, "key"
     KEY_PFA:
-      cp Current_key, Buffer_top ; If they're the same we're out of input data.
-      breq Out_of_input
-      ldi ZH, high(buffer) ; Load the char's address in the buffer into Z.
-      mov ZL, Current_key
+      lds Working, UCSR0A
+      sbrs Working, RXC0
+      rjmp KEY_PFA
       rcall DUP_PFA
-      ld TOS, Z ; Get char from buffer
-      inc Current_key
+      lds TOS, UDR0
+    _echo:
+      lds Working, UCSR0A
+      sbrs Working, UDRE0
+      rjmp _echo
+      sts UDR0, TOS
       ret
-    Out_of_input:
-      rcall DUP_PFA
-      ldi TOS, 0x15 ; ASCII NACK byte.
-      ret
+
+The old version of key::
+
+   ;   cp Current_key, Buffer_top ; If they're the same we're out of input data.
+   ;   breq Out_of_input
+   ;   ldi ZH, high(buffer) ; Load the char's address in the buffer into Z.
+   ;   mov ZL, Current_key
+   ;   rcall DUP_PFA
+   ;   ld TOS, Z ; Get char from buffer
+   ;   inc Current_key
+   ;   ret
+   ; Out_of_input:
+   ;   rcall DUP_PFA
+   ;   ldi TOS, 0x15 ; ASCII NACK byte.
+   ;   ret
+
 
 word::
 
@@ -361,38 +390,34 @@ word::
       .dw KEY
       .db 4, "word"
     WORD_PFA:
-      rcall KEY_PFA ; Get next char (or NACK, 0x15) onto stack.
-
-      cpi TOS, 0x15 ; Check for error, EOF.
-      breq Out_of_input ; This leaves TOSL with an extra copy but should work.
-
-      ; valid char, is it blank?
+      rcall KEY_PFA ; Get next char onto stack.
+      ; is it blank?
       cpi TOS, ' '
       brne _a_key
       rcall DROP_PFA ; remove the space
       rjmp WORD_PFA ; get the next char.
 
     _a_key:
-      ; put the start offset into a register for later
-      mov word_temp, Current_key
-      rcall DROP_PFA ; clear the char from the stack.
+      ; set up buffer
+      ldi ZL, low(buffer)
+      ldi ZH, high(buffer)
+      ldi Working, 0x00
+      mov Current_key, Working
+      mov Buffer_top, Working
 
     _find_length:
+      st Z+, TOS ; save the char to the buffer
+      rcall DROP_PFA ; ditch the char from the stack
+      inc Buffer_top
       rcall KEY_PFA
-      cpi TOS, 0x15
-      breq Out_of_input
       cpi TOS, ' '
       breq _done_finding
-      rcall DROP_PFA ; ditch the char from the stack
       rjmp _find_length ; continue searching for end of word.
 
     _done_finding:
       rcall DUP_PFA ; make room on the stack
-      mov TOS, word_temp ; start offset in TOS
-      dec TOS ; one less than current key.
-      mov TOSL, Current_key ; length in TOSL (replacing leftover last char)
-      clc ; clear carry bit just in case
-      sbc TOSL, word_temp ; subtract old from new to get length
+      ldi TOS, 0x00 ; start offset in TOS
+      mov TOSL, Buffer_top ; length in TOSL (replacing leftover last char)
       ret
 
 
