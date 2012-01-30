@@ -265,19 +265,19 @@ trigger the handler instead of just freaking out.</p>
 <p>Our (very simple) main loop just calls a test routine over and over again:</p>
 <pre class="literal-block">
 MAIN:
-  rcall CHECKIT
+  rcall WRITE_BANNER
+  rcall QUIT_PFA
   rjmp MAIN
 </pre>
 <p>This is a test/exercise subroutine for tracing in the debugger:</p>
 <pre class="literal-block">
 CHECKIT:
-  rcall HERE_PFA ; Put address of Here_mem onto the stack
+; rcall HERE_PFA ; Put address of Here_mem onto the stack
 ; rcall DUP_PFA
 ; inc TOS
 ; rcall SWAP_PFA
 ; rcall DROP_PFA
-  rcall FILL_BUFFER
-  rcall INTERPRET_PFA
+; rcall QUIT_PFA
   ret
 </pre>
 <p>A command line to exercise the interpreter and whatever word(s) are under development:</p>
@@ -286,25 +286,23 @@ COMMAND: .db 17, &quot; tcd : b dup [ ] &quot;
 </pre>
 <p>This routine takes the command line above and copies it into the input buffer:</p>
 <pre class="literal-block">
-FILL_BUFFER:
-  ldi Working, low(buffer)
-  mov Current_key, Working
-  mov Buffer_top, Working
+WRITE_BANNER:
   pushdownw
   ldi TOSL, low(COMMAND)
   ldi TOS, high(COMMAND)
   rcall LEFT_SHIFT_WORD_PFA
   movw Z, X
-  ldi TOSL, low(buffer)
-  ldi TOS, high(buffer)
+  popupw
   lpm r0, Z+ ; count
-  add Buffer_top, r0 ; set the buffer_top to the end of the string.
 _fill_buffer_loop:
   lpm Working, Z+
-  st X+, Working
+_taptaptap:
+  lds r1, UCSR0A
+  sbrs r1, UDRE0
+  rjmp _taptaptap
+  sts UDR0, Working
   dec r0
   brne _fill_buffer_loop
-  popupw
   ret
 </pre>
 </div>
@@ -352,12 +350,14 @@ KEY:
   .dw DUP
   .db 3, &quot;key&quot;
 KEY_PFA:
-  sbis UCSR0A, RXC0
+  lds Working, UCSR0A
+  sbrs Working, RXC0
   rjmp KEY_PFA
   rcall DUP_PFA
   lds TOS, UDR0
 _echo:
-  sbis UCSR0A, UDRE0
+  lds Working, UCSR0A
+  sbrs Working, UDRE0
   rjmp _echo
   sts UDR0, TOS
   ret
@@ -383,38 +383,34 @@ WORD:
   .dw KEY
   .db 4, &quot;word&quot;
 WORD_PFA:
-  rcall KEY_PFA ; Get next char (or NACK, 0x15) onto stack.
-
-  cpi TOS, 0x15 ; Check for error, EOF.
-  breq Out_of_input ; This leaves TOSL with an extra copy but should work.
-
-  ; valid char, is it blank?
+  rcall KEY_PFA ; Get next char onto stack.
+  ; is it blank?
   cpi TOS, ' '
   brne _a_key
   rcall DROP_PFA ; remove the space
   rjmp WORD_PFA ; get the next char.
 
 _a_key:
-  ; put the start offset into a register for later
-  mov word_temp, Current_key
-  rcall DROP_PFA ; clear the char from the stack.
+  ; set up buffer
+  ldi ZL, low(buffer)
+  ldi ZH, high(buffer)
+  ldi Working, 0x00
+  mov Current_key, Working
+  mov Buffer_top, Working
 
 _find_length:
+  st Z+, TOS ; save the char to the buffer
+  rcall DROP_PFA ; ditch the char from the stack
+  inc Buffer_top
   rcall KEY_PFA
-  cpi TOS, 0x15
-  breq Out_of_input
   cpi TOS, ' '
   breq _done_finding
-  rcall DROP_PFA ; ditch the char from the stack
   rjmp _find_length ; continue searching for end of word.
 
 _done_finding:
   rcall DUP_PFA ; make room on the stack
-  mov TOS, word_temp ; start offset in TOS
-  dec TOS ; one less than current key.
-  mov TOSL, Current_key ; length in TOSL (replacing leftover last char)
-  clc ; clear carry bit just in case
-  sbc TOSL, word_temp ; subtract old from new to get length
+  ldi TOS, 0x00 ; start offset in TOS
+  mov TOSL, Buffer_top ; length in TOSL (replacing leftover last char)
   ret
 </pre>
 </div>

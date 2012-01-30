@@ -265,19 +265,19 @@ Main Loop
 Our (very simple) main loop just calls a test routine over and over again::
 
   MAIN:
-    rcall CHECKIT
+    rcall WRITE_BANNER
+    rcall QUIT_PFA
     rjmp MAIN
 
 This is a test/exercise subroutine for tracing in the debugger::
 
         CHECKIT:
-          rcall HERE_PFA ; Put address of Here_mem onto the stack
+        ; rcall HERE_PFA ; Put address of Here_mem onto the stack
         ; rcall DUP_PFA
         ; inc TOS
         ; rcall SWAP_PFA
         ; rcall DROP_PFA
-          rcall FILL_BUFFER
-          rcall INTERPRET_PFA
+        ; rcall QUIT_PFA
           ret
 
 A command line to exercise the interpreter and whatever word(s) are under development::
@@ -286,25 +286,23 @@ A command line to exercise the interpreter and whatever word(s) are under develo
 
 This routine takes the command line above and copies it into the input buffer::
 
-        FILL_BUFFER:
-          ldi Working, low(buffer)
-          mov Current_key, Working
-          mov Buffer_top, Working
+        WRITE_BANNER:
           pushdownw
           ldi TOSL, low(COMMAND)
           ldi TOS, high(COMMAND)
           rcall LEFT_SHIFT_WORD_PFA
           movw Z, X
-          ldi TOSL, low(buffer)
-          ldi TOS, high(buffer)
+          popupw
           lpm r0, Z+ ; count
-          add Buffer_top, r0 ; set the buffer_top to the end of the string.
         _fill_buffer_loop:
           lpm Working, Z+
-          st X+, Working
+        _taptaptap:
+          lds r1, UCSR0A
+          sbrs r1, UDRE0
+          rjmp _taptaptap
+          sts UDR0, Working
           dec r0
           brne _fill_buffer_loop
-          popupw
           ret
 
 
