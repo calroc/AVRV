@@ -575,10 +575,23 @@ TPFA_PFA:
 _done_adding:
   ret
 </pre>
+<p>quit Oddly enough, the Forth main loop is called &quot;quit&quot;:</p>
+<pre class="literal-block">
+QUIT:
+  .dw TPFA
+  .db 4, &quot;quit&quot;
+QUIT_PFA:
+  ldi Working, low(RAMEND) ; reset return stack
+  out SPL, Working
+  ldi Working, high(RAMEND)
+  out SPH, Working
+  rcall INTERPRET_PFA
+  rjmp QUIT_PFA
+</pre>
 <p>interpret:</p>
 <pre class="literal-block">
 INTERPRET:
-  .dw TPFA
+  .dw QUIT
   .db 9, &quot;interpret&quot;
 INTERPRET_PFA:
   rcall WORD_PFA ; get offset and length of next word in buffer.
@@ -626,8 +639,8 @@ INTERPRET_PFA:
 _execute_it:
   mov TOS, TOSL ; clear the stack for the &quot;client&quot; word
   popup
-  icall ; and execute it.
-  rjmp INTERPRET_PFA
+  ijmp ; and execute it.
+
 _byee:
   popupw ; ditch the &quot;error message&quot;
   ret
@@ -744,6 +757,25 @@ COLON_PFA:
   rcall RBRAC_PFA
   ret
 </pre>
+<p>&quot;;&quot;:</p>
+<pre class="literal-block">
+SEMICOLON:
+  .dw COLON
+  .db (1 &amp; IMMED), &quot;;&quot;
+SEMICOLON_PFA:
+  z_here
+  ldi Working, low(EXIT_PFA)
+  st Z+, Working
+  ldi Working, high(EXIT_PFA)
+  st Z+, Working
+  mov Working, ZL
+  ldi ZL, low(Here_mem)
+  ldi ZH, high(Here_mem)
+  st Z, Working
+  ; switch back to immediate mode
+  rcall LBRAC_PFA
+  ret
+</pre>
 </div>
 </div>
 <div class="section" id="variables-and-system-variable-words">
@@ -751,7 +783,7 @@ COLON_PFA:
 <p>var_does:</p>
 <pre class="literal-block">
 VAR_DOES:
-  .dw COLON
+  .dw SEMICOLON
   .db 8, &quot;var_does&quot;
 VAR_DOES_PFA:
   ; Get the address of the calling variable word's parameter field off

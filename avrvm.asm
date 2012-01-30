@@ -409,8 +409,19 @@ TPFA_PFA:
 _done_adding:
   ret
 
-INTERPRET:
+QUIT:
   .dw TPFA
+  .db 4, "quit"
+QUIT_PFA:
+  ldi Working, low(RAMEND) ; reset return stack
+  out SPL, Working
+  ldi Working, high(RAMEND)
+  out SPH, Working
+  rcall INTERPRET_PFA
+  rjmp QUIT_PFA
+
+INTERPRET:
+  .dw QUIT
   .db 9, "interpret"
 INTERPRET_PFA:
   rcall WORD_PFA ; get offset and length of next word in buffer.
@@ -458,8 +469,8 @@ INTERPRET_PFA:
 _execute_it:
   mov TOS, TOSL ; clear the stack for the "client" word
   popup
-  icall ; and execute it.
-  rjmp INTERPRET_PFA
+  ijmp ; and execute it.
+
 _byee:
   popupw ; ditch the "error message"
   ret
@@ -562,8 +573,25 @@ COLON_PFA:
   rcall RBRAC_PFA
   ret
 
-VAR_DOES:
+SEMICOLON:
   .dw COLON
+  .db (1 & IMMED), ";"
+SEMICOLON_PFA:
+  z_here
+  ldi Working, low(EXIT_PFA)
+  st Z+, Working
+  ldi Working, high(EXIT_PFA)
+  st Z+, Working
+  mov Working, ZL
+  ldi ZL, low(Here_mem)
+  ldi ZH, high(Here_mem)
+  st Z, Working
+  ; switch back to immediate mode
+  rcall LBRAC_PFA
+  ret
+
+VAR_DOES:
+  .dw SEMICOLON
   .db 8, "var_does"
 VAR_DOES_PFA:
   ; Get the address of the calling variable word's parameter field off
