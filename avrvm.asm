@@ -241,6 +241,32 @@ RESET_BUTTON:
 RESET_BUTTON_PFA:
   rjmp 0x0000
 
+DOTESS:
+  .dw RESET_BUTTON
+  .db 2, ".s"
+DOTESS_PFA:
+  ldi ZH, high(data_stack)
+  ldi ZL, low(data_stack)
+_inny:
+  cp ZL, YL
+  cpc ZH, YH
+  breq _out
+  rcall DUP_PFA
+  ld TOS, Z+
+  rcall EMIT_PFA
+  rcall DUP_PFA
+  ldi TOS, ' '
+  rcall EMIT_PFA
+  rjmp _inny
+_out:
+  rcall DUP_PFA
+  ldi TOS, 0x0d ; CR
+  rcall EMIT_PFA
+  rcall DUP_PFA
+  ldi TOS, 0x0a ; LF
+  rcall EMIT_PFA
+  ret
+
 KEY:
   .dw RESET_BUTTON
   .db 3, "key"
@@ -443,15 +469,6 @@ _look_up_word:
   cpse TOSL, TOS ; ComPare Skip Equal
   rjmp _non_zero
   ; if TOS:TOSL == 0x0000 we're done.
-  rcall DUP_PFA
-  ldi TOS, '?'
-  rcall EMIT_PFA
-  rcall DUP_PFA
-  ldi TOS, 0x0d
-  rcall EMIT_PFA
-  rcall DUP_PFA
-  ldi TOS, 0x0a
-  rcall EMIT_PFA
   ldi TOS, 0xff ; consume TOS/TOSL and return 0xffff (we don't have that
   ldi TOSL, 0xff ; much RAM so this is not a valid address value.)
   ret
@@ -573,7 +590,7 @@ INTERPRET_PFA:
   cpi TOS, 0x00 ; all chars converted?
   brne _byee
   mov TOS, TOSL
-  popup
+  rcall EMIT_PFA
   ret
 
 _is_word:
@@ -621,6 +638,15 @@ _execute_it:
 
 _byee:
   popupw ; ditch the "error message"
+  rcall DUP_PFA
+  ldi TOS, '?'
+  rcall EMIT_PFA
+  rcall DUP_PFA
+  ldi TOS, 0x0d
+  rcall EMIT_PFA
+  rcall DUP_PFA
+  ldi TOS, 0x0a
+  rcall EMIT_PFA
   ret
 
 IMMEDIATE_P:

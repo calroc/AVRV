@@ -625,15 +625,6 @@ _look_up_word:
   cpse TOSL, TOS ; ComPare Skip Equal
   rjmp _non_zero
   ; if TOS:TOSL == 0x0000 we're done.
-  rcall DUP_PFA
-  ldi TOS, '?'
-  rcall EMIT_PFA
-  rcall DUP_PFA
-  ldi TOS, 0x0d
-  rcall EMIT_PFA
-  rcall DUP_PFA
-  ldi TOS, 0x0a
-  rcall EMIT_PFA
   ldi TOS, 0xff ; consume TOS/TOSL and return 0xffff (we don't have that
   ldi TOSL, 0xff ; much RAM so this is not a valid address value.)
   ret
@@ -761,7 +752,7 @@ INTERPRET_PFA:
   cpi TOS, 0x00 ; all chars converted?
   brne _byee
   mov TOS, TOSL
-  popup
+  rcall EMIT_PFA
   ret
 
 _is_word:
@@ -809,6 +800,15 @@ _execute_it:
 
 _byee:
   popupw ; ditch the &quot;error message&quot;
+  rcall DUP_PFA
+  ldi TOS, '?'
+  rcall EMIT_PFA
+  rcall DUP_PFA
+  ldi TOS, 0x0d
+  rcall EMIT_PFA
+  rcall DUP_PFA
+  ldi TOS, 0x0a
+  rcall EMIT_PFA
   ret
 </pre>
 <p>immediate_p:</p>
