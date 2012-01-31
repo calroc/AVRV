@@ -266,7 +266,9 @@ KEY_PFA:
   sbrs Working, RXC0
   rjmp KEY_PFA
   rcall DUP_PFA
+  pushdownw
   lds TOS, UDR0
+  mov TOSL, TOS
   rcall EMIT_PFA ; echo
   ret
 
