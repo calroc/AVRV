@@ -11,6 +11,8 @@
 
 .def Current_key = r14
 .def Buffer_top = r15
+.def qb_key = r3
+.def qb_top = r4
 
 .def Working = r16
 
@@ -56,6 +58,7 @@ Here_mem: .byte 1
 
 .org 0x0200
 buffer: .byte 0x80
+; qbuffer: .byte 0x40
 
 data_stack: .org 0x0280
 
@@ -139,6 +142,7 @@ sei
 
 MAIN:
   rcall WRITE_BANNER
+  ; rcall FILL_BUFFER
   rcall QUIT_PFA
   rjmp MAIN
 
@@ -161,7 +165,7 @@ WRITE_BANNER:
   movw Z, X
   popupw
   lpm r0, Z+ ; count
-_fill_buffer_loop:
+_fill_loop:
   lpm Working, Z+
 _taptaptap:
   lds r1, UCSR0A
@@ -169,8 +173,30 @@ _taptaptap:
   rjmp _taptaptap
   sts UDR0, Working
   dec r0
-  brne _fill_buffer_loop
+  brne _fill_loop
   ret
+
+;COMMAND: .db 17, " 23 emit "
+;
+;FILL_BUFFER:
+;  ldi Working, 0x00
+;  mov qb_key, Working
+;  pushdownw
+;  ldi TOSL, low(COMMAND)
+;  ldi TOS, high(COMMAND)
+;  rcall LEFT_SHIFT_WORD_PFA
+;  movw Z, X
+;  ldi TOSL, low(qbuffer)
+;  ldi TOS, high(qbuffer)
+;  lpm r0, Z+ ; count
+;  mov qb_top, r0 ; record length
+;_fill_buffer_loop:
+;  lpm Working, Z+
+;  st X+, Working
+;  dec r0
+;  brne _fill_buffer_loop
+;  popupw
+;  ret
 
 DROP:
   .dw 0 ; Initial link field is null.
@@ -219,6 +245,23 @@ KEY:
   .dw RESET_BUTTON
   .db 3, "key"
 KEY_PFA:
+;  cp qb_top, qb_key
+;  brne _get_it
+;  ldi Working, 0x00
+;  mov qb_key, Working
+;  rjmp KEY_PFA ; re-use the buffer contents
+;_get_it:
+;  push ZL
+;  push ZH
+;  ldi ZH, high(qbuffer)
+;  ldi ZL, low(qbuffer)
+;  add ZL, qb_key
+;  inc qb_key
+;  rcall DUP_PFA
+;  ld TOS, Z ; Get char from buffer
+;  pop ZH
+;  pop ZL
+
   lds Working, UCSR0A
   sbrs Working, RXC0
   rjmp KEY_PFA
@@ -256,11 +299,12 @@ _find_length:
   rjmp _find_length ; continue searching for end of word.
 
 _done_finding:
-  rcall DUP_PFA ; make room on the stack
   ldi TOS, 0x0d ; CR
   rcall EMIT_PFA
+  rcall DUP_PFA
   ldi TOS, 0x0a ; LF
   rcall EMIT_PFA
+  pushdownw
   ldi TOS, 0x00 ; start offset in TOS
   mov TOSL, Buffer_top ; length in TOSL (replacing leftover last char)
   ret
@@ -300,9 +344,10 @@ _decimal:
   subi TOS, '0'
   rjmp _converted
 _num_err:
+  rcall DUP_PFA
   rcall EMIT_PFA
   mov TOSL, TOS
-  mov word_temp, TOS
+  mov TOS, word_temp
   ret
 _converted:
   add Working, TOS
@@ -310,7 +355,7 @@ _converted:
   brne _convert_again
 
   rcall DUP_PFA
-  mov TOS, word_temp
+  mov TOS, Working
   ret
 
 LEFT_SHIFT_WORD:
@@ -396,10 +441,13 @@ _look_up_word:
   cpse TOSL, TOS ; ComPare Skip Equal
   rjmp _non_zero
   ; if TOS:TOSL == 0x0000 we're done.
+  rcall DUP_PFA
   ldi TOS, '?'
   rcall EMIT_PFA
+  rcall DUP_PFA
   ldi TOS, 0x0d
   rcall EMIT_PFA
+  rcall DUP_PFA
   ldi TOS, 0x0a
   rcall EMIT_PFA
   ldi TOS, 0xff ; consume TOS/TOSL and return 0xffff (we don't have that
@@ -496,12 +544,12 @@ QUIT_PFA:
   out SPL, Working
   ldi Working, high(RAMEND)
   out SPH, Working
-  mov Working, TOS
+  rcall DUP_PFA
   ldi TOS, '>'
   rcall EMIT_PFA
+  rcall DUP_PFA
   ldi TOS, ' '
   rcall EMIT_PFA
-  mov TOS, Working
   rcall INTERPRET_PFA
   rjmp QUIT_PFA
 
@@ -521,7 +569,7 @@ INTERPRET_PFA:
   popupw ; get the offset and length back
   rcall NUMBER_PFA
   cpi TOS, 0x00 ; all chars converted?
-  breq _byee
+  brne _byee
   mov TOS, TOSL
   popup
   ret

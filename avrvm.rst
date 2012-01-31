@@ -135,8 +135,8 @@ Input Buffer
 Next we have a buffer for input. For now, 128 bytes::
 
   .org 0x0200
-  buffer: .byte 0x40
-  qbuffer: .byte 0x40
+  buffer: .byte 0x80
+  ; qbuffer: .byte 0x40
 
 
 Data Stack
@@ -277,8 +277,8 @@ Main Loop
 Our (very simple) main loop just calls "quit" over and over again::
 
   MAIN:
-    ; rcall WRITE_BANNER
-    rcall FILL_BUFFER
+    rcall WRITE_BANNER
+    ; rcall FILL_BUFFER
     rcall QUIT_PFA
     rjmp MAIN
 
@@ -322,27 +322,27 @@ This routine takes the command line above and copies it into the input buffer::
 
 Sometimes we need to fake input (i.e. when running under the debugger.)::
 
-    COMMAND: .db 17, " 23 emit "
-
-    FILL_BUFFER:
-      ldi Working, 0x00
-      mov qb_key, Working
-      pushdownw
-      ldi TOSL, low(COMMAND)
-      ldi TOS, high(COMMAND)
-      rcall LEFT_SHIFT_WORD_PFA
-      movw Z, X
-      ldi TOSL, low(qbuffer)
-      ldi TOS, high(qbuffer)
-      lpm r0, Z+ ; count
-      mov qb_top, r0 ; record length
-    _fill_buffer_loop:
-      lpm Working, Z+
-      st X+, Working
-      dec r0
-      brne _fill_buffer_loop
-      popupw
-      ret
+    ;COMMAND: .db 17, " 23 emit "
+    ;
+    ;FILL_BUFFER:
+    ;  ldi Working, 0x00
+    ;  mov qb_key, Working
+    ;  pushdownw
+    ;  ldi TOSL, low(COMMAND)
+    ;  ldi TOS, high(COMMAND)
+    ;  rcall LEFT_SHIFT_WORD_PFA
+    ;  movw Z, X
+    ;  ldi TOSL, low(qbuffer)
+    ;  ldi TOS, high(qbuffer)
+    ;  lpm r0, Z+ ; count
+    ;  mov qb_top, r0 ; record length
+    ;_fill_buffer_loop:
+    ;  lpm Working, Z+
+    ;  st X+, Working
+    ;  dec r0
+    ;  brne _fill_buffer_loop
+    ;  popupw
+    ;  ret
 
 
 
@@ -419,24 +419,29 @@ key::
       .dw RESET_BUTTON
       .db 3, "key"
     KEY_PFA:
-      cp qb_top, qb_key
-      brne _get_it
-      ldi Working, 0x00
-      mov qb_key, Working
-      rjmp KEY_PFA ; re-use the buffer contents
-    _get_it:
-      ldi ZH, high(qbuffer)
-      mov ZL, qb_key
-      inc qb_key
-      rcall DUP_PFA
-      ld TOS, Z ; Get char from buffer
-
-    ;  lds Working, UCSR0A
-    ;  sbrs Working, RXC0
-    ;  rjmp KEY_PFA
+    ;  cp qb_top, qb_key
+    ;  brne _get_it
+    ;  ldi Working, 0x00
+    ;  mov qb_key, Working
+    ;  rjmp KEY_PFA ; re-use the buffer contents
+    ;_get_it:
+    ;  push ZL
+    ;  push ZH
+    ;  ldi ZH, high(qbuffer)
+    ;  ldi ZL, low(qbuffer)
+    ;  add ZL, qb_key
+    ;  inc qb_key
     ;  rcall DUP_PFA
-    ;  lds TOS, UDR0
-    ;  rcall EMIT_PFA ; echo
+    ;  ld TOS, Z ; Get char from buffer
+    ;  pop ZH
+    ;  pop ZL
+
+      lds Working, UCSR0A
+      sbrs Working, RXC0
+      rjmp KEY_PFA
+      rcall DUP_PFA
+      lds TOS, UDR0
+      rcall EMIT_PFA ; echo
       ret
 
 word::
@@ -470,11 +475,12 @@ word::
       rjmp _find_length ; continue searching for end of word.
 
     _done_finding:
-      rcall DUP_PFA ; make room on the stack
       ldi TOS, 0x0d ; CR
       rcall EMIT_PFA
+      rcall DUP_PFA
       ldi TOS, 0x0a ; LF
       rcall EMIT_PFA
+      pushdownw
       ldi TOS, 0x00 ; start offset in TOS
       mov TOSL, Buffer_top ; length in TOSL (replacing leftover last char)
       ret
@@ -516,9 +522,10 @@ number Parse a number from "stdin"::
       subi TOS, '0'
       rjmp _converted
     _num_err:
+      rcall DUP_PFA
       rcall EMIT_PFA
       mov TOSL, TOS
-      mov word_temp, TOS
+      mov TOS, word_temp
       ret
     _converted:
       add Working, TOS
@@ -526,7 +533,7 @@ number Parse a number from "stdin"::
       brne _convert_again
 
       rcall DUP_PFA
-      mov TOS, word_temp
+      mov TOS, Working
       ret
 
 
@@ -624,10 +631,13 @@ find::
       cpse TOSL, TOS ; ComPare Skip Equal
       rjmp _non_zero
       ; if TOS:TOSL == 0x0000 we're done.
+      rcall DUP_PFA
       ldi TOS, '?'
       rcall EMIT_PFA
+      rcall DUP_PFA
       ldi TOS, 0x0d
       rcall EMIT_PFA
+      rcall DUP_PFA
       ldi TOS, 0x0a
       rcall EMIT_PFA
       ldi TOS, 0xff ; consume TOS/TOSL and return 0xffff (we don't have that
@@ -728,12 +738,12 @@ quit Oddly enough, the Forth main loop is called "quit"::
       out SPL, Working
       ldi Working, high(RAMEND)
       out SPH, Working
-      mov Working, TOS
+      rcall DUP_PFA
       ldi TOS, '>'
       rcall EMIT_PFA
+      rcall DUP_PFA
       ldi TOS, ' '
       rcall EMIT_PFA
-      mov TOS, Working
       rcall INTERPRET_PFA
       rjmp QUIT_PFA
 
@@ -755,7 +765,7 @@ interpret::
       popupw ; get the offset and length back
       rcall NUMBER_PFA
       cpi TOS, 0x00 ; all chars converted?
-      breq _byee
+      brne _byee
       mov TOS, TOSL
       popup
       ret
