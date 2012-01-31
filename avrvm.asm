@@ -146,12 +146,12 @@ CHECKIT:
 ; rcall QUIT_PFA
   ret
 
-COMMAND: .db 17, " tcd : b dup [ ] "
+BANNER: .db 10, "Welcome", 0x0d, 0x0a, ">"
 
 WRITE_BANNER:
   pushdownw
-  ldi TOSL, low(COMMAND)
-  ldi TOS, high(COMMAND)
+  ldi TOSL, low(BANNER)
+  ldi TOS, high(BANNER)
   rcall LEFT_SHIFT_WORD_PFA
   movw Z, X
   popupw
@@ -192,8 +192,25 @@ DUP_PFA:
   mov TOSL, TOS
   ret
 
-KEY:
+EMIT:
   .dw DUP
+  .db 4, "emit"
+EMIT_PFA:
+  lds Working, UCSR0A
+  sbrs Working, UDRE0
+  rjmp EMIT_PFA
+  sts UDR0, TOS
+  popup
+  ret
+
+RESET_BUTTON:
+  .dw EMIT
+  .db 5, "reset"
+RESET_BUTTON_PFA:
+  rjmp 0x0000
+
+KEY:
+  .dw RESET_BUTTON
   .db 3, "key"
 KEY_PFA:
   lds Working, UCSR0A
@@ -201,25 +218,8 @@ KEY_PFA:
   rjmp KEY_PFA
   rcall DUP_PFA
   lds TOS, UDR0
-_echo:
-  lds Working, UCSR0A
-  sbrs Working, UDRE0
-  rjmp _echo
-  sts UDR0, TOS
+  rcall EMIT_PFA ; echo
   ret
-
-;   cp Current_key, Buffer_top ; If they're the same we're out of input data.
-;   breq Out_of_input
-;   ldi ZH, high(buffer) ; Load the char's address in the buffer into Z.
-;   mov ZL, Current_key
-;   rcall DUP_PFA
-;   ld TOS, Z ; Get char from buffer
-;   inc Current_key
-;   ret
-; Out_of_input:
-;   rcall DUP_PFA
-;   ldi TOS, 0x15 ; ASCII NACK byte.
-;   ret
 
 WORD:
   .dw KEY
@@ -251,6 +251,10 @@ _find_length:
 
 _done_finding:
   rcall DUP_PFA ; make room on the stack
+  ldi TOS, 0x0d ; CR
+  rcall EMIT_PFA
+  ldi TOS, 0x0a ; LF
+  rcall EMIT_PFA
   ldi TOS, 0x00 ; start offset in TOS
   mov TOSL, Buffer_top ; length in TOSL (replacing leftover last char)
   ret
@@ -338,6 +342,12 @@ _look_up_word:
   cpse TOSL, TOS ; ComPare Skip Equal
   rjmp _non_zero
   ; if TOS:TOSL == 0x0000 we're done.
+  ldi TOS, '?'
+  rcall EMIT_PFA
+  ldi TOS, 0x0d
+  rcall EMIT_PFA
+  ldi TOS, 0x0a
+  rcall EMIT_PFA
   ldi TOS, 0xff ; consume TOS/TOSL and return 0xffff (we don't have that
   ldi TOSL, 0xff ; much RAM so this is not a valid address value.)
   ret
