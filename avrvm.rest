@@ -43,6 +43,8 @@ Buffer pointers::
 
   .def Current_key = r14
   .def Buffer_top = r15
+  .def qb_key = r3
+  .def qb_top = r4
 
 We need a general use register::
 
@@ -133,7 +135,8 @@ Input Buffer
 Next we have a buffer for input. For now, 128 bytes::
 
   .org 0x0200
-  buffer: .byte 0x80
+  buffer: .byte 0x40
+  qbuffer: .byte 0x40
 
 
 Data Stack
@@ -271,10 +274,11 @@ trigger the handler instead of just freaking out.
 Main Loop
 ~~~~~~~~~
 
-Our (very simple) main loop just calls a test routine over and over again::
+Our (very simple) main loop just calls "quit" over and over again::
 
   MAIN:
-    rcall WRITE_BANNER
+    ; rcall WRITE_BANNER
+    rcall FILL_BUFFER
     rcall QUIT_PFA
     rjmp MAIN
 
@@ -303,7 +307,7 @@ This routine takes the command line above and copies it into the input buffer::
           movw Z, X
           popupw
           lpm r0, Z+ ; count
-        _fill_buffer_loop:
+        _fill_loop:
           lpm Working, Z+
         _taptaptap:
           lds r1, UCSR0A
@@ -311,8 +315,35 @@ This routine takes the command line above and copies it into the input buffer::
           rjmp _taptaptap
           sts UDR0, Working
           dec r0
-          brne _fill_buffer_loop
+          brne _fill_loop
           ret
+
+
+
+Sometimes we need to fake input (i.e. when running under the debugger.)::
+
+    COMMAND: .db 17, " 23 emit "
+
+    FILL_BUFFER:
+      ldi Working, 0x00
+      mov qb_key, Working
+      pushdownw
+      ldi TOSL, low(COMMAND)
+      ldi TOS, high(COMMAND)
+      rcall LEFT_SHIFT_WORD_PFA
+      movw Z, X
+      ldi TOSL, low(qbuffer)
+      ldi TOS, high(qbuffer)
+      lpm r0, Z+ ; count
+      mov qb_top, r0 ; record length
+    _fill_buffer_loop:
+      lpm Working, Z+
+      st X+, Working
+      dec r0
+      brne _fill_buffer_loop
+      popupw
+      ret
+
 
 
 Let's make words
@@ -388,12 +419,24 @@ key::
       .dw RESET_BUTTON
       .db 3, "key"
     KEY_PFA:
-      lds Working, UCSR0A
-      sbrs Working, RXC0
-      rjmp KEY_PFA
+      cp qb_top, qb_key
+      brne _get_it
+      ldi Working, 0x00
+      mov qb_key, Working
+      rjmp KEY_PFA ; re-use the buffer contents
+    _get_it:
+      ldi ZH, high(qbuffer)
+      mov ZL, qb_key
+      inc qb_key
       rcall DUP_PFA
-      lds TOS, UDR0
-      rcall EMIT_PFA ; echo
+      ld TOS, Z ; Get char from buffer
+
+    ;  lds Working, UCSR0A
+    ;  sbrs Working, RXC0
+    ;  rjmp KEY_PFA
+    ;  rcall DUP_PFA
+    ;  lds TOS, UDR0
+    ;  rcall EMIT_PFA ; echo
       ret
 
 word::
