@@ -7,6 +7,8 @@
 .def TOS = r27 ; XH
 .def TOSL = r26 ; XL
 
+.def Base = r8
+
 .def Current_key = r14
 .def Buffer_top = r15
 
@@ -92,6 +94,9 @@ BAD_INTERUPT:
 RESET:
   cli
 
+ldi Working, 10
+mov Base, Working
+
 ldi Working, low(RAMEND)
 out SPL, Working
 ldi Working, high(RAMEND)
@@ -146,7 +151,7 @@ CHECKIT:
 ; rcall QUIT_PFA
   ret
 
-BANNER: .db 10, "Welcome", 0x0d, 0x0a, ">"
+BANNER: .db 9, "Welcome", 0x0d, 0x0a
 
 WRITE_BANNER:
   pushdownw
@@ -200,6 +205,7 @@ EMIT_PFA:
   sbrs Working, UDRE0
   rjmp EMIT_PFA
   sts UDR0, TOS
+  mov TOS, TOSL
   popup
   ret
 
@@ -259,8 +265,56 @@ _done_finding:
   mov TOSL, Buffer_top ; length in TOSL (replacing leftover last char)
   ret
 
-LEFT_SHIFT_WORD:
+NUMBER:
   .dw WORD
+  .db 6, "number"
+NUMBER_PFA:
+  ; offset in TOS, length in TOSL
+  ldi Working, 0
+  mov word_temp, TOSL ; length
+  mov TOSL, TOS
+  ldi TOS, high(buffer)
+  ; X points to digits
+  movw Z, X
+
+  ld TOS, Z+
+  rjmp _convert
+
+_convert_again:
+  mul Working, Base
+  mov Working, r0
+  ld TOS, Z+
+
+_convert:
+  cpi TOS, '0'
+  brlo _num_err
+  cpi TOS, ':' ; the char after '9'
+  brlo _decimal
+  cpi TOS, 'a'
+  brlo _num_err
+  cpi TOS, 0x7b ; '{', the char after 'z'
+  brsh _num_err
+  subi TOS, 87 ; convert 'a'-'z' => 10-35
+  rjmp _converted
+_decimal:
+  subi TOS, '0'
+  rjmp _converted
+_num_err:
+  rcall EMIT_PFA
+  mov TOSL, TOS
+  mov word_temp, TOS
+  ret
+_converted:
+  add Working, TOS
+  dec word_temp
+  brne _convert_again
+
+  rcall DUP_PFA
+  mov TOS, word_temp
+  ret
+
+LEFT_SHIFT_WORD:
+  .dw NUMBER
   .db 3, "<<w"
 LEFT_SHIFT_WORD_PFA:
   mov Working, TOS
@@ -442,6 +496,12 @@ QUIT_PFA:
   out SPL, Working
   ldi Working, high(RAMEND)
   out SPH, Working
+  mov Working, TOS
+  ldi TOS, '>'
+  rcall EMIT_PFA
+  ldi TOS, ' '
+  rcall EMIT_PFA
+  mov TOS, Working
   rcall INTERPRET_PFA
   rjmp QUIT_PFA
 
@@ -452,9 +512,22 @@ INTERPRET_PFA:
   rcall WORD_PFA ; get offset and length of next word in buffer.
   cpi TOS, 0x15
   breq _byee
+  pushdownw ; save offset and length
   rcall FIND_PFA ; find it in the dictionary, (X <- LFA)
   cpi TOS, 0xff
+  brne _is_word
+
+  ; is it a number?
+  popupw ; get the offset and length back
+  rcall NUMBER_PFA
+  cpi TOS, 0x00 ; all chars converted?
   breq _byee
+  mov TOS, TOSL
+  popup
+  ret
+
+_is_word:
+  sbiw Y, 2 ; ditch offset and length
   pushdownw ; save a copy of LFA on the stack
 
   ; Calculate PFA and save it in Z.

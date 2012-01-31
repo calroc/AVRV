@@ -49,6 +49,10 @@ along with this program.  If not, see &lt;<a class="reference external" href="ht
 </pre>
 <p>Y register is our Data Stack Pointer.
 Z register will be used for diggin around in the dictionary.</p>
+<p>Base (numeric base for converting digits to numbers):</p>
+<pre class="literal-block">
+.def Base = r8
+</pre>
 <p>Buffer pointers:</p>
 <pre class="literal-block">
 .def Current_key = r14
@@ -282,14 +286,14 @@ CHECKIT:
 </pre>
 <p>A command line to exercise the interpreter and whatever word(s) are under development:</p>
 <pre class="literal-block">
-COMMAND: .db 17, &quot; tcd : b dup [ ] &quot;
+BANNER: .db 10, &quot;Welcome&quot;, 0x0d, 0x0a, &quot;&gt;&quot;
 </pre>
 <p>This routine takes the command line above and copies it into the input buffer:</p>
 <pre class="literal-block">
 WRITE_BANNER:
   pushdownw
-  ldi TOSL, low(COMMAND)
-  ldi TOS, high(COMMAND)
+  ldi TOSL, low(BANNER)
+  ldi TOS, high(BANNER)
   rcall LEFT_SHIFT_WORD_PFA
   movw Z, X
   popupw
@@ -342,12 +346,36 @@ DUP_PFA:
   ret
 </pre>
 </div>
+<div class="section" id="emit-and-reset">
+<h3>Emit and Reset</h3>
+<p>emit:</p>
+<pre class="literal-block">
+EMIT:
+  .dw DUP
+  .db 4, &quot;emit&quot;
+EMIT_PFA:
+  lds Working, UCSR0A
+  sbrs Working, UDRE0
+  rjmp EMIT_PFA
+  sts UDR0, TOS
+  popup
+  ret
+</pre>
+<p>reset:</p>
+<pre class="literal-block">
+RESET_BUTTON:
+  .dw EMIT
+  .db 5, &quot;reset&quot;
+RESET_BUTTON_PFA:
+  rjmp 0x0000
+</pre>
+</div>
 <div class="section" id="parsing">
 <h3>Parsing</h3>
 <p>key:</p>
 <pre class="literal-block">
 KEY:
-  .dw DUP
+  .dw RESET_BUTTON
   .db 3, &quot;key&quot;
 KEY_PFA:
   lds Working, UCSR0A
@@ -355,27 +383,8 @@ KEY_PFA:
   rjmp KEY_PFA
   rcall DUP_PFA
   lds TOS, UDR0
-_echo:
-  lds Working, UCSR0A
-  sbrs Working, UDRE0
-  rjmp _echo
-  sts UDR0, TOS
+  rcall EMIT_PFA ; echo
   ret
-</pre>
-<p>The old version of key:</p>
-<pre class="literal-block">
-;   cp Current_key, Buffer_top ; If they're the same we're out of input data.
-;   breq Out_of_input
-;   ldi ZH, high(buffer) ; Load the char's address in the buffer into Z.
-;   mov ZL, Current_key
-;   rcall DUP_PFA
-;   ld TOS, Z ; Get char from buffer
-;   inc Current_key
-;   ret
-; Out_of_input:
-;   rcall DUP_PFA
-;   ldi TOS, 0x15 ; ASCII NACK byte.
-;   ret
 </pre>
 <p>word:</p>
 <pre class="literal-block">
@@ -409,8 +418,62 @@ _find_length:
 
 _done_finding:
   rcall DUP_PFA ; make room on the stack
+  ldi TOS, 0x0d ; CR
+  rcall EMIT_PFA
+  ldi TOS, 0x0a ; LF
+  rcall EMIT_PFA
   ldi TOS, 0x00 ; start offset in TOS
   mov TOSL, Buffer_top ; length in TOSL (replacing leftover last char)
+  ret
+</pre>
+<p>number Parse a number from &quot;stdin&quot;:</p>
+<pre class="literal-block">
+NUMBER:
+  .dw WORD
+  .db 6, &quot;number&quot;
+NUMBER_PFA:
+  ; offset in TOS, length in TOSL
+  ldi Working, 0
+  mov word_temp, TOSL ; length
+  mov TOSL. TOS
+  ldi TOS, high(buffer)
+  ; X points to digits
+  movw Z, X
+
+  ld TOS, Z+
+  rjmp _convert
+
+_convert_again:
+  mul Working, Base
+  mov Working, r0
+  ld TOS, Z+
+
+_convert:
+  cpi TOS, '0'
+  brlo _num_err
+  cpi TOS, ':' ; the char after '9'
+  brlo _decimal
+  cpi TOS, 'a'
+  brlo _num_err
+  cpi TOS, 0x7b ; '{', the char after 'z'
+  brsh _num_err
+  subi TOS, 87 ; convert 'a'-'z' =&gt; 10-35
+  rjmp _converted
+_decimal:
+  subi TOS, '0'
+  rjmp _converted
+_num_err:
+  rcall EMIT_PFA
+  mov TOSL, TOS
+  mov word_temp, TOS
+  ret
+_converted:
+  add Working, TOS
+  dec word_temp
+  brne _convert_again
+
+  rcall DUP_PFA
+  mov TOS, word_temp
   ret
 </pre>
 </div>
@@ -419,7 +482,7 @@ _done_finding:
 <p>&quot;&lt;&lt;w&quot; shift a 16-bit value in TOS:TOSL one bit to the left:</p>
 <pre class="literal-block">
 LEFT_SHIFT_WORD:
-  .dw WORD
+  .dw NUMBER
   .db 3, &quot;&lt;&lt;w&quot;
 LEFT_SHIFT_WORD_PFA:
   mov Working, TOS
@@ -507,6 +570,12 @@ _look_up_word:
   cpse TOSL, TOS ; ComPare Skip Equal
   rjmp _non_zero
   ; if TOS:TOSL == 0x0000 we're done.
+  ldi TOS, '?'
+  rcall EMIT_PFA
+  ldi TOS, 0x0d
+  rcall EMIT_PFA
+  ldi TOS, 0x0a
+  rcall EMIT_PFA
   ldi TOS, 0xff ; consume TOS/TOSL and return 0xffff (we don't have that
   ldi TOSL, 0xff ; much RAM so this is not a valid address value.)
   ret
