@@ -280,6 +280,9 @@ to get up and running::
   ; should.
   ldi r16, (1 << TXEN0) | (1 << RXEN0) ; Enable transmit/receive
   sts UCSR0B, r16
+  
+  ldi TOS, 'O'
+  ldi TOSL, 'k'
 
 Re-enable interrupts::
 
@@ -298,8 +301,9 @@ Our (very simple) main loop just calls "quit" over and over again::
 
   MAIN:
     rcall WRITE_BANNER
-    rcall WORD_PFA
-    rcall DROP_PFA
+    ; rcall WORD_PFA
+    rcall KEY_PFA
+    rcall DOTESS_PFA
     ; rcall QUIT_PFA
     rjmp MAIN
 
@@ -460,26 +464,44 @@ dot-ess::
       .dw RESET_BUTTON
       .db 2, ".s"
     DOTESS_PFA:
-      ldi ZH, high(data_stack)
-      ldi ZL, low(data_stack)
+      rcall EMIT_CRLF_PFA
+      one_char '['
+      one_chreg TOS
+      one_char '-'
+      mov Working, TOSL
+      one_chreg Working
+      one_char ' '
+
+     ; ldi ZH, high(data_stack)
+     ; ldi ZL, low(data_stack)
+      movw Z, Y
+
     _inny:
-      cp ZL, YL
-      cpc ZH, YH
+      ldi Working, low(data_stack)
+      cp ZL, Working
+      ldi Working, high(data_stack)
+      cpc ZH, Working
       breq _out
-      rcall DUP_PFA
-      ld TOS, Z+
-      rcall EMIT_PFA
-      rcall DUP_PFA
-      ldi TOS, ' '
-      rcall EMIT_PFA
+
+      ld Working, -Z
+      one_chreg Working
+      one_char ' '
+
       rjmp _inny
+
     _out:
-      rcall DUP_PFA
-      ldi TOS, 0x0d ; CR
-      rcall EMIT_PFA
-      rcall DUP_PFA
-      ldi TOS, 0x0a ; LF
-      rcall EMIT_PFA
+      one_char ']'
+      rcall FUK
+      rcall EMIT_CRLF_PFA
+      ret
+
+    FUK:
+      cpse TOS, TOSL
+      rjmp _nah
+      one_char '+'
+      ret
+    _nah:
+      one_char '%'
       ret
 
 Parsing
@@ -496,14 +518,15 @@ key::
     ;  ret
 
       emits (KEY + 1)
+      one_char '>'
+      one_char ' '
     _keyey:
       lds Working, UCSR0A
       sbrs Working, RXC0
       rjmp _keyey
       rcall DUP_PFA
-      pushdownw
       lds TOS, UDR0
-      mov TOSL, TOS
+      rcall DUP_PFA
       rcall EMIT_PFA ; echo
       ret
 
