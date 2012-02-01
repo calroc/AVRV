@@ -361,7 +361,7 @@ emithex::
       rjmp _eloop
     _edone:
       ; Z points at correct char
-      ld TOS, Z
+      lpm TOS, Z
       rcall EMIT_PFA
       ret
 
