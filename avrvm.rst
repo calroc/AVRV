@@ -379,6 +379,8 @@ program RAM and writes it to the UART. It consumes TOS and TOSL::
       .dw EMIT
       .db 7, "emitstr"
     EMITSTR_PFA:
+      push ZH
+      push ZL
       rcall LEFT_SHIFT_WORD_PFA
       movw Z, X
       popupw
@@ -392,6 +394,8 @@ program RAM and writes it to the UART. It consumes TOS and TOSL::
       sts UDR0, Working
       dec counter
       brne _emitstr_loop
+      pop ZL
+      pop ZH
       ret
 
     EMIT_WORD_BUFFER:
@@ -487,6 +491,10 @@ key::
       .dw RESET_BUTTON
       .db 3, "key"
     KEY_PFA:
+    ;  rcall DUP_PFA
+    ;  nop
+    ;  ret
+
       emits (KEY + 1)
     _keyey:
       lds Working, UCSR0A

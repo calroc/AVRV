@@ -214,6 +214,8 @@ EMITSTR:
   .dw EMIT
   .db 7, "emitstr"
 EMITSTR_PFA:
+  push ZH
+  push ZL
   rcall LEFT_SHIFT_WORD_PFA
   movw Z, X
   popupw
@@ -227,6 +229,8 @@ _taptaptap:
   sts UDR0, Working
   dec counter
   brne _emitstr_loop
+  pop ZL
+  pop ZH
   ret
 
 EMIT_WORD_BUFFER:
@@ -313,6 +317,10 @@ KEY:
   .dw RESET_BUTTON
   .db 3, "key"
 KEY_PFA:
+;  rcall DUP_PFA
+;  nop
+;  ret
+
   emits (KEY + 1)
 _keyey:
   lds Working, UCSR0A
