@@ -68,6 +68,13 @@
   rcall EMIT_PFA
 .ENDMACRO
 
+      .MACRO emithex
+        st Y+, TOSL
+        mov TOSL, TOS
+        mov TOS, @0
+        rcall EMIT_HEX_PFA
+      .ENDMACRO
+
 .dseg
 
 heap: .org 0x0100
@@ -165,16 +172,48 @@ MAIN:
   rcall WRITE_BANNER
   ; rcall WORD_PFA
   rcall KEY_PFA
-  rcall DOTESS_PFA
+  ; rcall DOTESS_PFA
+  rcall EMIT_HEX_PFA
   ; rcall QUIT_PFA
   rjmp MAIN
 
 BANNER: .db 9, "Welcome", 0x0d, 0x0a
 DONE_WORD: .db 11, "word read", 0x0d, 0x0a
 HMMDOT: .db 1, '.'
+HEXDIGITS: .db "0123456789abcdef"
 
 WRITE_BANNER:
   emits BANNER
+  ret
+
+EMIT_HEX:
+  .dw 0x0000
+  .db 7, "emithex"
+EMIT_HEX_PFA:
+  rcall DUP_PFA
+  swap TOS
+  rcall emit_nibble ; high
+  rcall emit_nibble ; low
+  ret
+
+emit_nibble:
+  pushdownw
+  ldi TOS, high(HEXDIGITS)
+  ldi TOSL, low(HEXDIGITS)
+  rcall LEFT_SHIFT_WORD_PFA
+  movw Z, X
+  popupw
+  andi TOS, 0x0f ; mask high nibble
+_eloop:
+  cpi TOS, 0x00
+  breq _edone ; If nibble is not zero...
+  dec TOS
+  adiw Z, 1 ; increment the HEXDIGITS pointer
+  rjmp _eloop
+_edone:
+  ; Z points at correct char
+  ld TOS, Z
+  rcall EMIT_PFA
   ret
 
 DROP:
@@ -297,10 +336,13 @@ DOTESS:
 DOTESS_PFA:
   rcall EMIT_CRLF_PFA
   one_char '['
-  one_chreg TOS
+  rcall DUP_PFA
+  rcall EMIT_HEX_PFA
+;  one_chreg TOS
   one_char '-'
   mov Working, TOSL
-  one_chreg Working
+;  one_chreg Working
+  emithex Working
   one_char ' '
 
  ; ldi ZH, high(data_stack)
@@ -315,7 +357,8 @@ _inny:
   breq _out
 
   ld Working, -Z
-  one_chreg Working
+  ; one_chreg Working
+  emithex Working
   one_char ' '
 
   rjmp _inny
