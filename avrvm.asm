@@ -171,10 +171,10 @@ sei
 MAIN:
   rcall WRITE_BANNER
   ; rcall WORD_PFA
-  rcall KEY_PFA
-  ; rcall DOTESS_PFA
-  rcall EMIT_HEX_PFA
-  ; rcall QUIT_PFA
+  ; rcall FIND_PFA
+  ; rcall KEY_PFA
+  ; rcall EMIT_HEX_PFA
+  rcall QUIT_PFA
   rjmp MAIN
 
 BANNER: .db 9, "Welcome", 0x0d, 0x0a
@@ -190,10 +190,14 @@ EMIT_HEX:
   .dw 0x0000
   .db 7, "emithex"
 EMIT_HEX_PFA:
+  push ZH
+  push ZL
   rcall DUP_PFA
   swap TOS
   rcall emit_nibble ; high
   rcall emit_nibble ; low
+  pop ZL
+  pop ZH
   ret
 
 emit_nibble:
@@ -379,16 +383,16 @@ _nah:
   ret
 
 KEY:
-  .dw RESET_BUTTON
+  .dw DOTESS
   .db 3, "key"
 KEY_PFA:
 ;  rcall DUP_PFA
 ;  nop
 ;  ret
 
-  emits (KEY + 1)
-  one_char '>'
-  one_char ' '
+;  emits (KEY + 1)
+;  one_char '>'
+;  one_char ' '
 _keyey:
   lds Working, UCSR0A
   sbrs Working, RXC0
@@ -403,7 +407,7 @@ WORD:
   .dw KEY
   .db 4, "word"
 WORD_PFA:
-  emits (WORD + 1)
+ ; emits (WORD + 1)
   rcall KEY_PFA ; Get next char onto stack.
   ; is it blank?
   cpi TOS, ' '
@@ -423,7 +427,7 @@ _find_length:
   st Z+, TOS ; save the char to the buffer
   rcall DROP_PFA ; ditch the char from the stack
   inc Buffer_top
-  emits HMMDOT
+ ; emits HMMDOT
   rcall KEY_PFA
   cpi TOS, ' '
   breq _done_finding
@@ -483,7 +487,6 @@ _converted:
   dec word_temp
   brne _convert_again
 
-  rcall DUP_PFA
   mov TOS, Working
   ret
 
@@ -664,12 +667,9 @@ QUIT_PFA:
   out SPL, Working
   ldi Working, high(RAMEND)
   out SPH, Working
-  rcall DUP_PFA
-  ldi TOS, '>'
-  rcall EMIT_PFA
-  rcall DUP_PFA
-  ldi TOS, ' '
-  rcall EMIT_PFA
+  rcall DOTESS_PFA
+  one_char '>'
+  one_char ' '
   rcall INTERPRET_PFA
   rjmp QUIT_PFA
 
@@ -678,20 +678,23 @@ INTERPRET:
   .db 9, "interpret"
 INTERPRET_PFA:
   rcall WORD_PFA ; get offset and length of next word in buffer.
-  cpi TOS, 0x15
-  breq _byee
-  pushdownw ; save offset and length
+  pushdownw      ; save offset and length
   rcall FIND_PFA ; find it in the dictionary, (X <- LFA)
+  one_char '^'
+  rcall DOTESS_PFA
   cpi TOS, 0xff
   brne _is_word
 
   ; is it a number?
   popupw ; get the offset and length back
   rcall NUMBER_PFA
-  cpi TOS, 0x00 ; all chars converted?
+  one_char '#'
+  rcall DOTESS_PFA
+  cpi TOSL, 0x00 ; all chars converted?
   brne _byee
-  mov TOS, TOSL
-  rcall EMIT_PFA
+  mov TOSL, TOS ; dup
+  rcall EMIT_HEX_PFA ; and consume
+  one_char ' '
   ret
 
 _is_word:
@@ -739,15 +742,8 @@ _execute_it:
 
 _byee:
   popupw ; ditch the "error message"
-  rcall DUP_PFA
-  ldi TOS, '?'
-  rcall EMIT_PFA
-  rcall DUP_PFA
-  ldi TOS, 0x0d
-  rcall EMIT_PFA
-  rcall DUP_PFA
-  ldi TOS, 0x0a
-  rcall EMIT_PFA
+  one_char '?'
+  rcall EMIT_CRLF_PFA
   ret
 
 IMMEDIATE_P:
