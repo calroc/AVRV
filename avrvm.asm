@@ -11,8 +11,8 @@
 
 .def Current_key = r14
 .def Buffer_top = r15
-.def qb_key = r3
-.def qb_top = r4
+.def counter = r3 ; used for looping, etc.
+.def Hmm_reg = r4
 
 .def Working = r16
 
@@ -49,6 +49,25 @@
   ldi ZH, high(heap)
 .ENDMACRO
 
+.MACRO emits
+  pushdownw
+  ldi TOSL, low(@0)
+  ldi TOS, high(@0)
+  rcall EMITSTR_PFA
+.ENDMACRO
+
+.MACRO one_char
+  rcall DUP_PFA
+  ldi TOS, @0
+  rcall EMIT_PFA
+.ENDMACRO
+
+.MACRO one_chreg
+  rcall DUP_PFA
+  mov TOS, @0
+  rcall EMIT_PFA
+.ENDMACRO
+
 .dseg
 
 heap: .org 0x0100
@@ -58,7 +77,6 @@ Here_mem: .byte 1
 
 .org 0x0200
 buffer: .byte 0x80
-; qbuffer: .byte 0x40
 
 data_stack: .org 0x0280
 
@@ -142,61 +160,18 @@ sei
 
 MAIN:
   rcall WRITE_BANNER
-  ; rcall FILL_BUFFER
-  rcall QUIT_PFA
+  rcall WORD_PFA
+  rcall DROP_PFA
+  ; rcall QUIT_PFA
   rjmp MAIN
 
-CHECKIT:
-; rcall HERE_PFA ; Put address of Here_mem onto the stack
-; rcall DUP_PFA
-; inc TOS
-; rcall SWAP_PFA
-; rcall DROP_PFA
-; rcall QUIT_PFA
-  ret
-
 BANNER: .db 9, "Welcome", 0x0d, 0x0a
+DONE_WORD: .db 11, "word read", 0x0d, 0x0a
+HMMDOT: .db 1, '.'
 
 WRITE_BANNER:
-  pushdownw
-  ldi TOSL, low(BANNER)
-  ldi TOS, high(BANNER)
-  rcall LEFT_SHIFT_WORD_PFA
-  movw Z, X
-  popupw
-  lpm r0, Z+ ; count
-_fill_loop:
-  lpm Working, Z+
-_taptaptap:
-  lds r1, UCSR0A
-  sbrs r1, UDRE0
-  rjmp _taptaptap
-  sts UDR0, Working
-  dec r0
-  brne _fill_loop
+  emits BANNER
   ret
-
-;COMMAND: .db 17, " 23 emit "
-;
-;FILL_BUFFER:
-;  ldi Working, 0x00
-;  mov qb_key, Working
-;  pushdownw
-;  ldi TOSL, low(COMMAND)
-;  ldi TOS, high(COMMAND)
-;  rcall LEFT_SHIFT_WORD_PFA
-;  movw Z, X
-;  ldi TOSL, low(qbuffer)
-;  ldi TOS, high(qbuffer)
-;  lpm r0, Z+ ; count
-;  mov qb_top, r0 ; record length
-;_fill_buffer_loop:
-;  lpm Working, Z+
-;  st X+, Working
-;  dec r0
-;  brne _fill_buffer_loop
-;  popupw
-;  ret
 
 DROP:
   .dw 0 ; Initial link field is null.
@@ -235,8 +210,75 @@ EMIT_PFA:
   popup
   ret
 
-RESET_BUTTON:
+EMITSTR:
   .dw EMIT
+  .db 7, "emitstr"
+EMITSTR_PFA:
+  rcall LEFT_SHIFT_WORD_PFA
+  movw Z, X
+  popupw
+  lpm counter, Z+
+_emitstr_loop:
+  lpm Working, Z+
+_taptaptap:
+  lds Hmm_reg, UCSR0A
+  sbrs Hmm_reg, UDRE0
+  rjmp _taptaptap
+  sts UDR0, Working
+  dec counter
+  brne _emitstr_loop
+  ret
+
+EMIT_WORD_BUFFER:
+  .dw EMITSTR
+  .db 6, "ewbuff"
+EMIT_WORD_BUFFER_PFA:
+  emits (EMIT_WORD_BUFFER + 1)
+
+  rcall DUP_PFA
+  mov TOS, Buffer_top
+  ldi Working, '0'
+  add TOS, Working
+  rcall EMIT_PFA
+
+  one_char '_'
+
+  ; rcall EMIT_CRLF_PFA
+  mov Working, Buffer_top
+  cpi Working, 0x00
+  brne _theres_a_word
+  ret
+
+_theres_a_word:
+  mov counter, Buffer_top
+  ldi ZL, low(buffer)
+  ldi ZH, high(buffer)
+
+_ewb_loop:
+  ld Working, Z+
+  one_chreg Working
+  dec counter
+  one_char ','
+  ; emits HMMDOT
+  brne _ewb_loop
+
+  rcall EMIT_CRLF_PFA
+  ret
+
+EMIT_CRLF:
+  .dw EMIT_WORD_BUFFER
+  .db 4, "crlf"
+EMIT_CRLF_PFA:
+  rcall DUP_PFA
+  ldi TOS, 0x0d ; CR
+  rcall EMIT_PFA
+  rcall DUP_PFA
+  ldi TOS, 0x0a ; LF
+  rcall EMIT_PFA
+  ret
+
+RESET_BUTTON:
+  .dw EMIT_CRLF
   .db 5, "reset"
 RESET_BUTTON_PFA:
   rjmp 0x0000
@@ -271,26 +313,11 @@ KEY:
   .dw RESET_BUTTON
   .db 3, "key"
 KEY_PFA:
-;  cp qb_top, qb_key
-;  brne _get_it
-;  ldi Working, 0x00
-;  mov qb_key, Working
-;  rjmp KEY_PFA ; re-use the buffer contents
-;_get_it:
-;  push ZL
-;  push ZH
-;  ldi ZH, high(qbuffer)
-;  ldi ZL, low(qbuffer)
-;  add ZL, qb_key
-;  inc qb_key
-;  rcall DUP_PFA
-;  ld TOS, Z ; Get char from buffer
-;  pop ZH
-;  pop ZL
-
+  emits (KEY + 1)
+_keyey:
   lds Working, UCSR0A
   sbrs Working, RXC0
-  rjmp KEY_PFA
+  rjmp _keyey
   rcall DUP_PFA
   pushdownw
   lds TOS, UDR0
@@ -302,6 +329,7 @@ WORD:
   .dw KEY
   .db 4, "word"
 WORD_PFA:
+  emits (WORD + 1)
   rcall KEY_PFA ; Get next char onto stack.
   ; is it blank?
   cpi TOS, ' '
@@ -321,20 +349,19 @@ _find_length:
   st Z+, TOS ; save the char to the buffer
   rcall DROP_PFA ; ditch the char from the stack
   inc Buffer_top
+  emits HMMDOT
   rcall KEY_PFA
   cpi TOS, ' '
   breq _done_finding
   rjmp _find_length ; continue searching for end of word.
 
 _done_finding:
-  ldi TOS, 0x0d ; CR
-  rcall EMIT_PFA
-  rcall DUP_PFA
-  ldi TOS, 0x0a ; LF
-  rcall EMIT_PFA
-  pushdownw
-  ldi TOS, 0x00 ; start offset in TOS
-  mov TOSL, Buffer_top ; length in TOSL (replacing leftover last char)
+  emits DONE_WORD
+  rcall EMIT_WORD_BUFFER_PFA
+  rcall EMIT_CRLF_PFA
+  st Y+, TOSL ; make room on stack
+  ldi TOS, 0x00 ; start offset in TOS (replacing leftover last char)
+  mov TOSL, Buffer_top ; length in TOSL
   ret
 
 NUMBER:
