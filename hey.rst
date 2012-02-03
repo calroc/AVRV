@@ -145,6 +145,21 @@ the previous value of TOSL if you still want it after using the macro.
     ld TOSL, -Y
   .ENDMACRO
 
+Make room on TOS and TOSL by pushing them onto the data stack::
+
+  .MACRO pushdownw
+    st Y+, TOSL
+    st Y+, TOS
+  .ENDMACRO
+
+Essentially "drop drop"::
+
+  .MACRO popupw
+    ld TOS, -Y
+    ld TOSL, -Y
+  .ENDMACRO
+
+
 Begining of code proper
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -233,7 +248,7 @@ Our (very simple) main loop just calls "quit" over and over again::
   MAIN:
     rcall WORD_PFA
     rcall NUMBER_PFA
-    rcall EMIT_PFA
+    rcall EMIT_HEX_PFA
     rjmp MAIN
 
 Initialize the USART
@@ -452,6 +467,10 @@ For a decimal digit, just subtract '0' from the char to get the value::
       subi TOS, '0'
       rjmp _converted
 
+If we encounter an unknown digit, echo it to the serial port then copy
+the remaining number of unconverted digits into TOS.  This makes it
+impossible to tell programatically if the conversion succeeded or not,
+which I'll fix later.::
 
     _num_err:
       rcall ECHO_PFA
@@ -471,5 +490,110 @@ We're done, move the result to TOS and return::
       mov TOS, Working
       ret
 
+Left Shift Word (16-Bit) Value
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The AVR chip has a slight wrinkle when accessing program (flash) RAM.
+Because it is organized in 16-bit words there are 16K addresses to
+address the 32K of RAM. The architecture allows for reaching each byte
+by means of left-shifting the address and using the least significant
+bit to indicate low (0) or high (1) byte.
+
+This means that if we get an address from e.g. the return stack and
+we want to access data in program RAM with it we have to shift it one
+bit left. This word "<<w" shifts a 16-bit value in TOS:TOSL one bit to
+the left::
+
+    LEFT_SHIFT_WORD:
+      .dw NUMBER
+      .db 3, "<<w"
+    LEFT_SHIFT_WORD_PFA:
+      mov Working, TOS
+      clr TOS
+      lsl TOSL
+
+If the carry bit is clear skip incrementing TOS::
+
+      brcc _lslw0
+      inc TOS ; copy carry flag to TOS[0]
+    _lslw0:
+      lsl Working
+      or TOS, Working
+
+X now contains left-shifted word, and carry bit reflects TOS carry::
+
+      ret
+
+Emithex
+~~~~~~~
+
+I want to be able to emit values (from the stack or wherever) as hex
+digits. This word pops the value on the stack and writes it to the serial
+port as two hex digits (high byte first)::
+
+    HEXDIGITS: .db "0123456789abcdef"
+
+    EMIT_HEX:
+      .dw LEFT_SHIFT_WORD
+      .db 7, "emithex"
+    EMIT_HEX_PFA:
+
+Save Z register onto the return stack::
+
+      push ZH
+      push ZL
+
+Dup TOS, emit the low byte, then the high byte::
+
+      rcall DUP_PFA
+      swap TOS
+      rcall emit_nibble ; high
+      rcall emit_nibble ; low
+
+Restore Z from the return stack::
+
+      pop ZL
+      pop ZH
+      ret
+
+So now to emit nybbles. This routine consumes TOS and clobbers Z::
+
+    emit_nibble:
+
+Get the address of HEXDIGITS into Z::
+
+      pushdownw
+      ldi TOS, high(HEXDIGITS)
+      ldi TOSL, low(HEXDIGITS)
+      rcall LEFT_SHIFT_WORD_PFA
+      movw Z, X
+      popupw
+
+mask high nibble::
+
+      andi TOS, 0x0f
+
+Since there's no direct way to add the nibble to Z (I could define a
+16-bit-plus-8-bit add word, and I probably will later) we'll use a loop
+and the adiw instruction::
+
+    _eloop:
+      cpi TOS, 0x00
+
+If nibble is not zero...::
+
+      breq _edone
+      dec TOS
+
+Increment the HEXDIGITS pointer::
+
+      adiw Z, 1
+      rjmp _eloop
+
+    _edone:
+      ; Z points at correct char
+      lpm TOS, Z
+      rcall EMIT_PFA
+      ret
 
 

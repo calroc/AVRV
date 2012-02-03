@@ -85,6 +85,14 @@ Z register will be used for diggin around in the dictionary.</p>
 <pre class="literal-block">
 .def word_counter = r17
 </pre>
+<p>Base (numeric base for converting digits to numbers):</p>
+<pre class="literal-block">
+.def Base = r8
+</pre>
+<p>Number keeps track of the digits it is comverting using this register:</p>
+<pre class="literal-block">
+.def number_pointer = r9
+</pre>
 </div>
 <div class="section" id="data-sram-organization">
 <h1>Data (SRAM) Organization</h1>
@@ -128,6 +136,20 @@ the previous value of TOSL if you still want it after using the macro.
 (I.e. mov TOS, TOSL):</p>
 <pre class="literal-block">
 .MACRO popup
+  ld TOSL, -Y
+.ENDMACRO
+</pre>
+<p>Make room on TOS and TOSL by pushing them onto the data stack:</p>
+<pre class="literal-block">
+.MACRO pushdownw
+  st Y+, TOSL
+  st Y+, TOS
+.ENDMACRO
+</pre>
+<p>Essentially &quot;drop drop&quot;:</p>
+<pre class="literal-block">
+.MACRO popupw
+  ld TOS, -Y
   ld TOSL, -Y
 .ENDMACRO
 </pre>
@@ -195,6 +217,11 @@ ldi YH, high(data_stack)
 <pre class="literal-block">
 rcall UART_INIT
 </pre>
+<p>Initialize Base:</p>
+<pre class="literal-block">
+ldi Working, 10
+mov Base, Working
+</pre>
 <p>Re-enable interrupts:</p>
 <pre class="literal-block">
 sei
@@ -210,7 +237,8 @@ trigger the handler instead of just freaking out.</p>
 <pre class="literal-block">
 MAIN:
   rcall WORD_PFA
-  rcall EMIT_PFA
+  rcall NUMBER_PFA
+  rcall EMIT_HEX_PFA
   rjmp MAIN
 </pre>
 </div>
@@ -307,7 +335,7 @@ ECHO_PFA:
 </pre>
 </div>
 <div class="section" id="drop">
-<h2>drop</h2>
+<h2>Drop</h2>
 <p>Drop the top item from the stack:</p>
 <pre class="literal-block">
 DROP:
@@ -375,6 +403,184 @@ brne _find_length
 <pre class="literal-block">
 mov TOS, word_counter
 ret
+</pre>
+</div>
+<div class="section" id="number">
+<h2>Number</h2>
+<p>Parse a number from the word_buffer. The length of the word is in TOS:</p>
+<pre class="literal-block">
+NUMBER:
+  .dw WORD
+  .db 6, &quot;number&quot;
+NUMBER_PFA:
+</pre>
+<p>Point Z at the buffer:</p>
+<pre class="literal-block">
+ldi ZL, low(buffer)
+ldi ZH, high(buffer)
+</pre>
+<p>We'll accumulate the number in Working. Set it to zero.
+Then save the length to number_pointer and load the first character into
+TOS:</p>
+<pre class="literal-block">
+mov number_pointer, TOS
+ldi Working, 0x00
+ld TOS, Z+
+rjmp _convert
+</pre>
+<p>This is where we loop back in if there is more than one digit to convert.
+We multiply the current accumulated value by the Base (the 16-bit result
+is placed in r1:r0) and load the next digit into TOS:</p>
+<pre class="literal-block">
+_convert_again:
+  mul Working, Base
+  mov Working, r0
+  ld TOS, Z+
+
+_convert:
+</pre>
+<p>If the character is between '0' and '9' go to _decimal:</p>
+<pre class="literal-block">
+cpi TOS, '0'
+brlo _num_err
+cpi TOS, ':' ; the char after '9'
+brlo _decimal
+
+rjmp _num_err
+</pre>
+<p>For a decimal digit, just subtract '0' from the char to get the value:</p>
+<pre class="literal-block">
+_decimal:
+  subi TOS, '0'
+  rjmp _converted
+</pre>
+<p>If we encounter an unknown digit, echo it to the serial port then copy
+the remaining number of unconverted digits into TOS.  This makes it
+impossible to tell programatically if the conversion succeeded or not,
+which I'll fix later.:</p>
+<pre class="literal-block">
+_num_err:
+  rcall ECHO_PFA
+  mov TOS, number_pointer
+  ret
+</pre>
+<p>Once we have a digit in TOS we can add it to our accumulator and, if
+there are more digits to convert, we loop back to keep converting them:</p>
+<pre class="literal-block">
+_converted:
+  add Working, TOS
+  dec number_pointer
+  brne _convert_again
+</pre>
+<p>We're done, move the result to TOS and return:</p>
+<pre class="literal-block">
+mov TOS, Working
+ret
+</pre>
+</div>
+<div class="section" id="left-shift-word-16-bit-value">
+<h2>Left Shift Word (16-Bit) Value</h2>
+<p>The AVR chip has a slight wrinkle when accessing program (flash) RAM.
+Because it is organized in 16-bit words there are 16K addresses to
+address the 32K of RAM. The architecture allows for reaching each byte
+by means of left-shifting the address and using the least significant
+bit to indicate low (0) or high (1) byte.</p>
+<p>This means that if we get an address from e.g. the return stack and
+we want to access data in program RAM with it we have to shift it one
+bit left. This word &quot;&lt;&lt;w&quot; shifts a 16-bit value in TOS:TOSL one bit to
+the left:</p>
+<pre class="literal-block">
+LEFT_SHIFT_WORD:
+  .dw NUMBER
+  .db 3, &quot;&lt;&lt;w&quot;
+LEFT_SHIFT_WORD_PFA:
+  mov Working, TOS
+  clr TOS
+  lsl TOSL
+</pre>
+<p>If the carry bit is clear skip incrementing TOS:</p>
+<pre class="literal-block">
+  brcc _lslw0
+  inc TOS ; copy carry flag to TOS[0]
+_lslw0:
+  lsl Working
+  or TOS, Working
+</pre>
+<p>X now contains left-shifted word, and carry bit reflects TOS carry:</p>
+<pre class="literal-block">
+ret
+</pre>
+</div>
+<div class="section" id="emithex">
+<h2>Emithex</h2>
+<p>I want to be able to emit values (from the stack or wherever) as hex
+digits. This word pops the value on the stack and writes it to the serial
+port as two hex digits (high byte first):</p>
+<pre class="literal-block">
+HEXDIGITS: .db &quot;0123456789abcdef&quot;
+
+EMIT_HEX:
+  .dw LEFT_SHIFT_WORD
+  .db 7, &quot;emithex&quot;
+EMIT_HEX_PFA:
+</pre>
+<p>Save Z register onto the return stack:</p>
+<pre class="literal-block">
+push ZH
+push ZL
+</pre>
+<p>Dup TOS, emit the low byte, then the high byte:</p>
+<pre class="literal-block">
+rcall DUP_PFA
+swap TOS
+rcall emit_nibble ; high
+rcall emit_nibble ; low
+</pre>
+<p>Restore Z from the return stack:</p>
+<pre class="literal-block">
+pop ZL
+pop ZH
+ret
+</pre>
+<p>So now to emit nybbles. This routine consumes TOS and clobbers Z:</p>
+<pre class="literal-block">
+emit_nibble:
+</pre>
+<p>Get the address of HEXDIGITS into Z:</p>
+<pre class="literal-block">
+pushdownw
+ldi TOS, high(HEXDIGITS)
+ldi TOSL, low(HEXDIGITS)
+rcall LEFT_SHIFT_WORD_PFA
+movw Z, X
+popupw
+</pre>
+<p>mask high nibble:</p>
+<pre class="literal-block">
+andi TOS, 0x0f
+</pre>
+<p>Since there's no direct way to add the nibble to Z (I could define a
+16-bit-plus-8-bit add word, and I probably will later) we'll use a loop
+and the adiw instruction:</p>
+<pre class="literal-block">
+_eloop:
+  cpi TOS, 0x00
+</pre>
+<p>If nibble is not zero...:</p>
+<pre class="literal-block">
+breq _edone
+dec TOS
+</pre>
+<p>Increment the HEXDIGITS pointer:</p>
+<pre class="literal-block">
+  adiw Z, 1
+  rjmp _eloop
+
+_edone:
+  ; Z points at correct char
+  lpm TOS, Z
+  rcall EMIT_PFA
+  ret
 </pre>
 </div>
 </div>

@@ -26,6 +26,16 @@ data_stack: .org 0x0140 ; SRAM_START + buffer
   ld TOSL, -Y
 .ENDMACRO
 
+.MACRO pushdownw
+  st Y+, TOSL
+  st Y+, TOS
+.ENDMACRO
+
+.MACRO popupw
+  ld TOS, -Y
+  ld TOSL, -Y
+.ENDMACRO
+
 .cseg
 
 .org 0x0000
@@ -79,7 +89,7 @@ sei
 MAIN:
   rcall WORD_PFA
   rcall NUMBER_PFA
-  rcall EMIT_PFA
+  rcall EMIT_HEX_PFA
   rjmp MAIN
 
 UART_INIT:
@@ -207,7 +217,6 @@ _decimal:
   subi TOS, '0'
   rjmp _converted
 
-
 _num_err:
   rcall ECHO_PFA
   mov TOS, number_pointer
@@ -220,3 +229,64 @@ _converted:
 
 mov TOS, Working
 ret
+
+LEFT_SHIFT_WORD:
+  .dw NUMBER
+  .db 3, "<<w"
+LEFT_SHIFT_WORD_PFA:
+  mov Working, TOS
+  clr TOS
+  lsl TOSL
+
+  brcc _lslw0
+  inc TOS ; copy carry flag to TOS[0]
+_lslw0:
+  lsl Working
+  or TOS, Working
+
+ret
+
+HEXDIGITS: .db "0123456789abcdef"
+
+EMIT_HEX:
+  .dw LEFT_SHIFT_WORD
+  .db 7, "emithex"
+EMIT_HEX_PFA:
+
+push ZH
+push ZL
+
+rcall DUP_PFA
+swap TOS
+rcall emit_nibble ; high
+rcall emit_nibble ; low
+
+pop ZL
+pop ZH
+ret
+
+emit_nibble:
+
+pushdownw
+ldi TOS, high(HEXDIGITS)
+ldi TOSL, low(HEXDIGITS)
+rcall LEFT_SHIFT_WORD_PFA
+movw Z, X
+popupw
+
+andi TOS, 0x0f
+
+_eloop:
+  cpi TOS, 0x00
+
+breq _edone
+dec TOS
+
+  adiw Z, 1
+  rjmp _eloop
+
+_edone:
+  ; Z points at correct char
+  lpm TOS, Z
+  rcall EMIT_PFA
+  ret

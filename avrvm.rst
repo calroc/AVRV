@@ -50,21 +50,6 @@ This flag is used in the name-length byte of a word definition header::
 
 
 
-Make room on TOS and TOSL by pushing them onto the data stack::
-
-  .MACRO pushdownw
-    st Y+, TOSL
-    st Y+, TOS
-  .ENDMACRO
-
-Essentially "drop drop"::
-
-  .MACRO popupw
-    ld TOS, -Y
-    ld TOSL, -Y
-  .ENDMACRO
-
-
 
 
 
@@ -550,24 +535,6 @@ word::
 
 Core Interpreting and Compiling Words
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-"<<w" shift a 16-bit value in TOS:TOSL one bit to the left::
-
-    LEFT_SHIFT_WORD:
-      .dw NUMBER
-      .db 3, "<<w"
-    LEFT_SHIFT_WORD_PFA:
-      mov Working, TOS
-      clc ; clear carry flag
-      clr TOS ; clear TOS
-      lsl TOSL
-      brcc _no_carry_var_does ; If the carry bit is clear skip incrementing TOS
-      inc TOS ; copy carry flag to TOS[0]
-    _no_carry_var_does:
-      lsl Working
-      or TOS, Working
-      ; X now contains left-shifted word, and carry bit reflects TOS carry.
-      ret
 
 "@" fetch a byte from the heap given its offset in TOS::
 
