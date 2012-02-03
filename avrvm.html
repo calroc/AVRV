@@ -4,7 +4,7 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta name="generator" content="Docutils 0.6: http://docutils.sourceforge.net/" />
-<title>Bot Initial Draft MCP</title>
+<title>Robot Firmware</title>
 <style type="text/css">
 
 @import url(html4css1.css);
@@ -18,8 +18,8 @@ pre.literal-block {
 </style>
 </head>
 <body>
-<div class="document" id="bot-initial-draft-mcp">
-<h1 class="title">Bot Initial Draft MCP</h1>
+<div class="document" id="robot-firmware">
+<h1 class="title">Robot Firmware</h1>
 
 <blockquote>
 <p>This program is free software: you can redistribute it and/or modify
@@ -33,15 +33,43 @@ GNU General Public License for more details.</p>
 <p>You should have received a copy of the GNU General Public License
 along with this program.  If not, see &lt;<a class="reference external" href="http://www.gnu.org/licenses/">http://www.gnu.org/licenses/</a>&gt;.</p>
 </blockquote>
+<div class="section" id="introduction">
+<h1>Introduction</h1>
+<p>This is a simple sort-of Forth system for AVR microcontrollers. It's
+written for the <a class="reference external" href="http://www.pololu.com/catalog/product/1220">Pololu Baby Orangutan robot controller</a></p>
+<p>The system in general probably won't make much sense unless you're
+already at least a little familiar with Forth. Two helpful sources are
+<a class="reference external" href="http://www.bradrodriguez.com/papers/moving1.htm">Brad Rodriguez' &quot;Moving Forth&quot; series</a> and <a class="reference external" href="http://rwmj.wordpress.com/2010/08/07/jonesforth-git-repository/">Richard
+Jones'</a> wonderful <a class="reference external" href="http://git.annexia.org/?p=jonesforth.git;a=summary">jonesforth &quot;literate Forth&quot;</a>.</p>
+<p>There's no attempt to implement or adhere to any standard Forth. I'm just
+noodling around and creating the easiest version of what seems like it
+will work.</p>
+</div>
 <div class="section" id="definitions">
 <h1>Definitions</h1>
-<p>Let's include the definitions for the ATmega328P:</p>
+<p>The Pololu Baby Orangutan is (currently) built around the Amtel
+ATmega328P, so let's start by including the definitions for that. (This
+file comes with the AVR Studio 4 software from Amtel.):</p>
 <pre class="literal-block">
 .nolist
 .include &quot;m328Pdef.inc&quot;
 .list
 .listmac
 </pre>
+<p>The AVR chip has a Harvard architecture with separate memories and buses for
+program and data RAM. The data bus, SRAM, and registers are eight bits wide,
+while the address bus and Flash memory (for persistent program storage)
+are sixteen bits wide.</p>
+<p>I've decided to try having the Top-Of-Stack (TOS) and the next 8-bit
+&quot;cell&quot; underneath it (which I call TOSL below) in two registers with the
+rest of the stack pointed to by another pair of registers.</p>
+<p>Certain pairs of 8-bit registers (namely the &quot;top&quot; six registers r26 -
+r31) can be used as 16-bit registers (namely X, Y, and Z) for addressing
+and some math functions</p>
+<p>If we use a pair of such registers as our TOS and TOSL it gives us the
+ability to, say, put the low and high bytes of an address in program or
+data RAM onto the stack and then efficiently use the 16-bit value to
+fetch or store from that location.</p>
 <p>Keep the top two items (bytes) on the stack in the X register:</p>
 <pre class="literal-block">
 .def TOS = r27 ; XH
@@ -79,6 +107,11 @@ Z register will be used for diggin around in the dictionary.</p>
 <pre class="literal-block">
 .def tpfa_temp_high = r22
 .def tpfa_temp_low = r23
+</pre>
+<p>Registers used by Interpret:</p>
+<pre class="literal-block">
+.def pfa_low = r24
+.def pfa_high = r25
 </pre>
 <p>This flag is used in the name-length byte of a word definition header:</p>
 <pre class="literal-block">
@@ -118,6 +151,36 @@ This is faster than calling the here and data-fetch words:</p>
   ld ZL, Z
   ldi ZH, high(heap)
 .ENDMACRO
+</pre>
+<p>Write out the counted string:</p>
+<pre class="literal-block">
+.MACRO emits
+  pushdownw
+  ldi TOSL, low(&#64;0)
+  ldi TOS, high(&#64;0)
+  rcall EMITSTR_PFA
+.ENDMACRO
+</pre>
+<p>Emit one character. (Kind of a debugging aid.):</p>
+<pre class="literal-block">
+.MACRO one_char
+  rcall DUP_PFA
+  ldi TOS, &#64;0
+  rcall EMIT_PFA
+.ENDMACRO
+
+.MACRO one_chreg
+  rcall DUP_PFA
+  mov TOS, &#64;0
+  rcall EMIT_PFA
+.ENDMACRO
+
+      .MACRO emithex
+        st Y+, TOSL
+        mov TOSL, TOS
+        mov TOS, &#64;0
+        rcall EMIT_HEX_PFA
+      .ENDMACRO
 </pre>
 </div>
 </div>
@@ -261,6 +324,9 @@ sts UBRR0L, r16
 ; should.
 ldi r16, (1 &lt;&lt; TXEN0) | (1 &lt;&lt; RXEN0) ; Enable transmit/receive
 sts UCSR0B, r16
+
+ldi TOS, 'O'
+ldi TOSL, 'k'
 </pre>
 <p>Re-enable interrupts:</p>
 <pre class="literal-block">
@@ -277,27 +343,65 @@ trigger the handler instead of just freaking out.</p>
 <pre class="literal-block">
 MAIN:
   rcall WRITE_BANNER
-  rcall KEY_PFA
-  rcall DROP_PFA
-  ; rcall QUIT_PFA
+  ; rcall WORD_PFA
+  ; rcall FIND_PFA
+  ; rcall KEY_PFA
+  ; rcall EMIT_HEX_PFA
+  rcall QUIT_PFA
   rjmp MAIN
 </pre>
 <p>Print this banner when starting:</p>
 <pre class="literal-block">
 BANNER: .db 9, &quot;Welcome&quot;, 0x0d, 0x0a
+DONE_WORD: .db 11, &quot;word read&quot;, 0x0d, 0x0a
+HMMDOT: .db 1, '.'
+HEXDIGITS: .db &quot;0123456789abcdef&quot;
 </pre>
 <p>This routine takes the banner above and copies it to UART:</p>
 <pre class="literal-block">
 WRITE_BANNER:
-  pushdownw
-  ldi TOSL, low(BANNER)
-  ldi TOS, high(BANNER)
-  rcall EMITSTR_PFA
+  emits BANNER
   ret
 </pre>
 </div>
 <div class="section" id="let-s-make-words">
 <h2>Let's make words</h2>
+<p>emithex:</p>
+<pre class="literal-block">
+EMIT_HEX:
+  .dw 0x0000
+  .db 7, &quot;emithex&quot;
+EMIT_HEX_PFA:
+  push ZH
+  push ZL
+  rcall DUP_PFA
+  swap TOS
+  rcall emit_nibble ; high
+  rcall emit_nibble ; low
+  pop ZL
+  pop ZH
+  ret
+
+emit_nibble:
+  pushdownw
+  ldi TOS, high(HEXDIGITS)
+  ldi TOSL, low(HEXDIGITS)
+  rcall LEFT_SHIFT_WORD_PFA
+  movw Z, X
+  popupw
+  andi TOS, 0x0f ; mask high nibble
+_eloop:
+  cpi TOS, 0x00
+  breq _edone ; If nibble is not zero...
+  dec TOS
+  adiw Z, 1 ; increment the HEXDIGITS pointer
+  rjmp _eloop
+_edone:
+  ; Z points at correct char
+  lpm TOS, Z
+  rcall EMIT_PFA
+  ret
+</pre>
 <div class="section" id="id1">
 <h3>Data Stack</h3>
 <p>drop:</p>
@@ -355,6 +459,8 @@ EMITSTR:
   .dw EMIT
   .db 7, &quot;emitstr&quot;
 EMITSTR_PFA:
+  push ZH
+  push ZL
   rcall LEFT_SHIFT_WORD_PFA
   movw Z, X
   popupw
@@ -368,12 +474,62 @@ _taptaptap:
   sts UDR0, Working
   dec counter
   brne _emitstr_loop
+  pop ZL
+  pop ZH
+  ret
+
+EMIT_WORD_BUFFER:
+  .dw EMITSTR
+  .db 6, &quot;ewbuff&quot;
+EMIT_WORD_BUFFER_PFA:
+  emits (EMIT_WORD_BUFFER + 1)
+
+  rcall DUP_PFA
+  mov TOS, Buffer_top
+  ldi Working, '0'
+  add TOS, Working
+  rcall EMIT_PFA
+
+  one_char '_'
+
+  ; rcall EMIT_CRLF_PFA
+  mov Working, Buffer_top
+  cpi Working, 0x00
+  brne _theres_a_word
+  ret
+
+_theres_a_word:
+  mov counter, Buffer_top
+  ldi ZL, low(buffer)
+  ldi ZH, high(buffer)
+
+_ewb_loop:
+  ld Working, Z+
+  one_chreg Working
+  dec counter
+  one_char ','
+  ; emits HMMDOT
+  brne _ewb_loop
+
+  rcall EMIT_CRLF_PFA
+  ret
+
+EMIT_CRLF:
+  .dw EMIT_WORD_BUFFER
+  .db 4, &quot;crlf&quot;
+EMIT_CRLF_PFA:
+  rcall DUP_PFA
+  ldi TOS, 0x0d ; CR
+  rcall EMIT_PFA
+  rcall DUP_PFA
+  ldi TOS, 0x0a ; LF
+  rcall EMIT_PFA
   ret
 </pre>
 <p>reset:</p>
 <pre class="literal-block">
 RESET_BUTTON:
-  .dw EMITSTR
+  .dw EMIT_CRLF
   .db 5, &quot;reset&quot;
 RESET_BUTTON_PFA:
   rjmp 0x0000
@@ -384,26 +540,48 @@ DOTESS:
   .dw RESET_BUTTON
   .db 2, &quot;.s&quot;
 DOTESS_PFA:
-  ldi ZH, high(data_stack)
-  ldi ZL, low(data_stack)
+  rcall EMIT_CRLF_PFA
+  one_char '['
+  rcall DUP_PFA
+  rcall EMIT_HEX_PFA
+;  one_chreg TOS
+  one_char '-'
+  mov Working, TOSL
+;  one_chreg Working
+  emithex Working
+  one_char ' '
+
+ ; ldi ZH, high(data_stack)
+ ; ldi ZL, low(data_stack)
+  movw Z, Y
+
 _inny:
-  cp ZL, YL
-  cpc ZH, YH
+  ldi Working, low(data_stack)
+  cp ZL, Working
+  ldi Working, high(data_stack)
+  cpc ZH, Working
   breq _out
-  rcall DUP_PFA
-  ld TOS, Z+
-  rcall EMIT_PFA
-  rcall DUP_PFA
-  ldi TOS, ' '
-  rcall EMIT_PFA
+
+  ld Working, -Z
+  ; one_chreg Working
+  emithex Working
+  one_char ' '
+
   rjmp _inny
+
 _out:
-  rcall DUP_PFA
-  ldi TOS, 0x0d ; CR
-  rcall EMIT_PFA
-  rcall DUP_PFA
-  ldi TOS, 0x0a ; LF
-  rcall EMIT_PFA
+  one_char ']'
+  rcall FUK
+  rcall EMIT_CRLF_PFA
+  ret
+
+FUK:
+  cpse TOS, TOSL
+  rjmp _nah
+  one_char '+'
+  ret
+_nah:
+  one_char '%'
   ret
 </pre>
 </div>
@@ -412,16 +590,23 @@ _out:
 <p>key:</p>
 <pre class="literal-block">
 KEY:
-  .dw RESET_BUTTON
+  .dw DOTESS
   .db 3, &quot;key&quot;
 KEY_PFA:
+;  rcall DUP_PFA
+;  nop
+;  ret
+
+;  emits (KEY + 1)
+;  one_char '&gt;'
+;  one_char ' '
+_keyey:
   lds Working, UCSR0A
   sbrs Working, RXC0
-  rjmp KEY_PFA
+  rjmp _keyey
   rcall DUP_PFA
-  pushdownw
   lds TOS, UDR0
-  mov TOSL, TOS
+  rcall DUP_PFA
   rcall EMIT_PFA ; echo
   ret
 </pre>
@@ -431,6 +616,7 @@ WORD:
   .dw KEY
   .db 4, &quot;word&quot;
 WORD_PFA:
+ ; emits (WORD + 1)
   rcall KEY_PFA ; Get next char onto stack.
   ; is it blank?
   cpi TOS, ' '
@@ -450,20 +636,19 @@ _find_length:
   st Z+, TOS ; save the char to the buffer
   rcall DROP_PFA ; ditch the char from the stack
   inc Buffer_top
+ ; emits HMMDOT
   rcall KEY_PFA
   cpi TOS, ' '
   breq _done_finding
   rjmp _find_length ; continue searching for end of word.
 
 _done_finding:
-  ldi TOS, 0x0d ; CR
-  rcall EMIT_PFA
-  rcall DUP_PFA
-  ldi TOS, 0x0a ; LF
-  rcall EMIT_PFA
-  pushdownw
-  ldi TOS, 0x00 ; start offset in TOS
-  mov TOSL, Buffer_top ; length in TOSL (replacing leftover last char)
+  emits DONE_WORD
+  rcall EMIT_WORD_BUFFER_PFA
+  rcall EMIT_CRLF_PFA
+  st Y+, TOSL ; make room on stack
+  ldi TOS, 0x00 ; start offset in TOS (replacing leftover last char)
+  mov TOSL, Buffer_top ; length in TOSL
   ret
 </pre>
 <p>number Parse a number from &quot;stdin&quot;:</p>
@@ -513,7 +698,6 @@ _converted:
   dec word_temp
   brne _convert_again
 
-  rcall DUP_PFA
   mov TOS, Working
   ret
 </pre>
@@ -709,12 +893,9 @@ QUIT_PFA:
   out SPL, Working
   ldi Working, high(RAMEND)
   out SPH, Working
-  rcall DUP_PFA
-  ldi TOS, '&gt;'
-  rcall EMIT_PFA
-  rcall DUP_PFA
-  ldi TOS, ' '
-  rcall EMIT_PFA
+  rcall DOTESS_PFA
+  one_char '&gt;'
+  one_char ' '
   rcall INTERPRET_PFA
   rjmp QUIT_PFA
 </pre>
@@ -725,51 +906,78 @@ INTERPRET:
   .db 9, &quot;interpret&quot;
 INTERPRET_PFA:
   rcall WORD_PFA ; get offset and length of next word in buffer.
-  cpi TOS, 0x15
-  breq _byee
-  pushdownw ; save offset and length
+  pushdownw      ; save offset and length
   rcall FIND_PFA ; find it in the dictionary, (X &lt;- LFA)
+
+  one_char '0'
+  rcall DOTESS_PFA
+
   cpi TOS, 0xff
   brne _is_word
 
   ; is it a number?
   popupw ; get the offset and length back
   rcall NUMBER_PFA
-  cpi TOS, 0x00 ; all chars converted?
+
+  one_char '1'
+  rcall DOTESS_PFA
+
+  cpi TOSL, 0x00 ; all chars converted?
   brne _byee
-  mov TOS, TOSL
-  rcall EMIT_PFA
+  mov TOSL, TOS ; dup
+  rcall EMIT_HEX_PFA ; and consume
+  one_char ' '
+  ret
+
+_byee:
+  popupw ; ditch the &quot;error message&quot;
+  one_char '2'
+  rcall EMIT_CRLF_PFA
   ret
 
 _is_word:
   sbiw Y, 2 ; ditch offset and length
   pushdownw ; save a copy of LFA on the stack
+  one_char '3'
+  rcall DOTESS_PFA
 
   ; Calculate PFA and save it in Z.
   rcall TPFA_PFA ; get the PFA address (X &lt;- PFA)
-  movw Z, X
+  movw pfa_high:pfa_low, X
 
   ; Check if the word is flagged as immediate.
   popupw ; get the LFA again
-  st Y+, ZL ; save PFA on stack to clear Z for IMMEDIATE_P
-  st Y+, ZH
+  one_char '4'
+  rcall DOTESS_PFA
   rcall IMMEDIATE_P_PFA ; stack is one (byte) cell less ( LFA:LFA - imm? )
-  mov ZH, TOSL ; restore PFA to Z from stack
-  ld ZL, -Y
-  breq _execute_it
+
+  one_char '5'
+  rcall DOTESS_PFA
+
+  ; result of IMMEDIATE is in TOS
+  cpi TOS, 0x00
+  brne _execute_it
 
   ; word is not immediate, check State and act accordingly
-  st Y+, TOSL ; free up X register pair (Z still holds PFA)
+  st Y+, TOSL ; free up X register pair
   ldi TOSL, low(State_mem)
   ldi TOS, high(State_mem)
+  one_char '6'
+  rcall DOTESS_PFA
+
   ld TOS, X
+  one_char '7'
+  rcall DOTESS_PFA
+
   popup
+  one_char '8'
+  rcall DOTESS_PFA
   cpi TOS, 0x00 ; immediate mode?
   breq _execute_it
 
   ; compile mode
   st Y+, TOSL
-  movw X, Z ; PFA on stack
+  movw X, pfa_high:pfa_low ; PFA on stack
   z_here
   st Z+, TOSL ; write PFA to 'here'
   st Z+, TOS
@@ -780,22 +988,14 @@ _is_word:
   ret
 
 _execute_it:
+  one_char 'z'
+  rcall DOTESS_PFA
   mov TOS, TOSL ; clear the stack for the &quot;client&quot; word
   popup
+  one_char 'Z'
+  rcall DOTESS_PFA
+  movw Z, pfa_high:pfa_low ; PFA in Z
   ijmp ; and execute it.
-
-_byee:
-  popupw ; ditch the &quot;error message&quot;
-  rcall DUP_PFA
-  ldi TOS, '?'
-  rcall EMIT_PFA
-  rcall DUP_PFA
-  ldi TOS, 0x0d
-  rcall EMIT_PFA
-  rcall DUP_PFA
-  ldi TOS, 0x0a
-  rcall EMIT_PFA
-  ret
 </pre>
 <p>immediate_p:</p>
 <pre class="literal-block">

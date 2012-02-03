@@ -1,40 +1,3 @@
-=====================
-Bot Initial Draft MCP
-=====================
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-
-
-Definitions
------------
-
-Let's include the definitions for the ATmega328P::
-
-  .nolist
-  .include "m328Pdef.inc"
-  .list
-  .listmac
-
-Keep the top two items (bytes) on the stack in the X register::
-
-  .def TOS = r27 ; XH
-  .def TOSL = r26 ; XL
-
-Y register is our Data Stack Pointer.
-Z register will be used for diggin around in the dictionary.
-
 Base (numeric base for converting digits to numbers)::
 
   .def Base = r8
@@ -77,10 +40,19 @@ This flag is used in the name-length byte of a word definition header::
   .equ IMMED = 0x80
 
 
-Macros
-~~~~~~
 
-Some data stack manipulation macros to ease readability.
+
+
+
+
+
+
+
+
+
+
+
+
 
 Make room on TOS and TOSL by pushing them onto the data stack::
 
@@ -89,20 +61,42 @@ Make room on TOS and TOSL by pushing them onto the data stack::
     st Y+, TOS
   .ENDMACRO
 
-Pop from data stack to TOSL. Note that you are responsible for preserving
-the previous value of TOSL if you still want it after using the macro.
-(I.e. mov TOS, TOSL)::
-
-  .MACRO popup
-    ld TOSL, -Y
-  .ENDMACRO
-
 Essentially "drop drop"::
 
   .MACRO popupw
     ld TOS, -Y
     ld TOSL, -Y
   .ENDMACRO
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 Load Z register pair with SRAM address of next free byte in heap.
 This is faster than calling the here and data-fetch words::
@@ -137,12 +131,12 @@ Emit one character. (Kind of a debugging aid.)::
     rcall EMIT_PFA
   .ENDMACRO
 
-        .MACRO emithex
-          st Y+, TOSL
-          mov TOSL, TOS
-          mov TOS, @0
-          rcall EMIT_HEX_PFA
-        .ENDMACRO
+  .MACRO emithex
+    st Y+, TOSL
+    mov TOSL, TOS
+    mov TOS, @0
+    rcall EMIT_HEX_PFA
+  .ENDMACRO
 
 Data (SRAM) Organization
 ------------------------
@@ -172,86 +166,55 @@ Next we have a buffer for input. For now, 128 bytes::
   buffer: .byte 0x80
 
 
-Data Stack
-~~~~~~~~~~
-
-The Parameter (Data) Stack begins just after the buffer and grows upward
-towards the Return Stack at the top of RAM. Note that the first two bytes
-of stack are kept in the X register. Due to this the initial two bytes of
-the data stack will be filled with whatever was in X before the first
-push, unless you load X (i.e. TOS and Just-Under-TOS) "manually" before
-dropping into the interpreter loop::
-
-  data_stack: .org 0x0280
 
 
 
-Code (Flash RAM)
-----------------
 
-::
 
-  .cseg
 
-Interupt Vectors
-~~~~~~~~~~~~~~~~
 
-::
 
-        .org 0x0000
-          jmp RESET
-          jmp BAD_INTERUPT ; INT0 External Interrupt Request 0
-          jmp BAD_INTERUPT ; INT1 External Interrupt Request 1
-          jmp BAD_INTERUPT ; PCINT0 Pin Change Interrupt Request 0
-          jmp BAD_INTERUPT ; PCINT1 Pin Change Interrupt Request 1
-          jmp BAD_INTERUPT ; PCINT2 Pin Change Interrupt Request 2
-          jmp BAD_INTERUPT ; WDT Watchdog Time-out Interrupt
-          jmp BAD_INTERUPT ; TIMER2 COMPA Timer/Counter2 Compare Match A
-          jmp BAD_INTERUPT ; TIMER2 COMPB Timer/Counter2 Compare Match B
-          jmp BAD_INTERUPT ; TIMER2 OVF Timer/Counter2 Overflow
-          jmp BAD_INTERUPT ; TIMER1 CAPT Timer/Counter1 Capture Event
-          jmp BAD_INTERUPT ; TIMER1 COMPA Timer/Counter1 Compare Match A
-          jmp BAD_INTERUPT ; TIMER1 COMPB Timer/Coutner1 Compare Match B
-          jmp BAD_INTERUPT ; TIMER1 OVF Timer/Counter1 Overflow
-          jmp BAD_INTERUPT ; TIMER0 COMPA Timer/Counter0 Compare Match A
-          jmp BAD_INTERUPT ; TIMER0 COMPB Timer/Counter0 Compare Match B
-          jmp BAD_INTERUPT ; TIMER0 OVF Timer/Counter0 Overflow
-          jmp BAD_INTERUPT ; SPI, STC SPI Serial Transfer Complete
-          jmp BAD_INTERUPT ; USART, RX USART Rx Complete
-          jmp BAD_INTERUPT ; USART, UDRE USART, Data Register Empty
-          jmp BAD_INTERUPT ; USART, TX USART, Tx Complete
-          jmp BAD_INTERUPT ; ADC ADC Conversion Complete
-          jmp BAD_INTERUPT ; EE READY EEPROM Ready
-          jmp BAD_INTERUPT ; ANALOG COMP Analog Comparator
-          jmp BAD_INTERUPT ; TWI 2-wire Serial Interface
-          jmp BAD_INTERUPT ; SPM READY Store Program Memory Ready
-        BAD_INTERUPT:
-          jmp 0x0000
 
-Initial reset vector
-~~~~~~~~~~~~~~~~~~~~
 
-Disable interrupts and reset everything::
 
-  RESET:
-    cli
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 Initialize Base::
 
   ldi Working, 10
   mov Base, Working
-
-Set up the Return Stack::
-
-  ldi Working, low(RAMEND)
-  out SPL, Working
-  ldi Working, high(RAMEND)
-  out SPH, Working
-
-Initialize Data Stack::
-
-  ldi YL, low(data_stack)
-  ldi YH, high(data_stack)
 
 Set State to immediate (0)::
 
@@ -282,44 +245,30 @@ Initialize Latest (current_key is Latest right now.)::
   ldi Working, high(CURRENT_KEY_WORD)
   st Z, Working
 
-Initialize the USART. This could be broken out into words but I'm eager
-to get up and running::
-
-  ldi r17, high(520) ; 2400 baud w/ 20Mhz osc
-  ldi r16, low(520)
-  sts UBRR0H, r17
-  sts UBRR0L, r16
-  ; The chip defaults to 8N1 so we won't set it here even though we
-  ; should.
-  ldi r16, (1 << TXEN0) | (1 << RXEN0) ; Enable transmit/receive
-  sts UCSR0B, r16
-  
   ldi TOS, 'O'
   ldi TOSL, 'k'
 
-Re-enable interrupts::
-
-  sei
-
-TODO: Set up a Stack Overflow Handler and put its address at RAMEND
-and set initial stack pointer to RAMEND - 2 (or would it be 1?)
-That way if we RET from somewhere and the stack is underflowed we'll
-trigger the handler instead of just freaking out.
 
 
-Main Loop
-~~~~~~~~~
 
-Our (very simple) main loop just calls "quit" over and over again::
 
-  MAIN:
-    rcall WRITE_BANNER
-    ; rcall WORD_PFA
-    ; rcall FIND_PFA
-    ; rcall KEY_PFA
-    ; rcall EMIT_HEX_PFA
-    rcall QUIT_PFA
-    rjmp MAIN
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 Print this banner when starting::
@@ -564,26 +513,6 @@ Parsing
 
 key::
 
-    KEY:
-      .dw DOTESS
-      .db 3, "key"
-    KEY_PFA:
-    ;  rcall DUP_PFA
-    ;  nop
-    ;  ret
-
-    ;  emits (KEY + 1)
-    ;  one_char '>'
-    ;  one_char ' '
-    _keyey:
-      lds Working, UCSR0A
-      sbrs Working, RXC0
-      rjmp _keyey
-      rcall DUP_PFA
-      lds TOS, UDR0
-      rcall DUP_PFA
-      rcall EMIT_PFA ; echo
-      ret
 
 word::
 
