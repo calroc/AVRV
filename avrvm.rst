@@ -66,6 +66,12 @@ Registers used by "to PFA" word::
   .def tpfa_temp_high = r22
   .def tpfa_temp_low = r23
 
+Registers used by Interpret::
+
+  .def pfa_low = r24
+  .def pfa_high = r25
+
+
 This flag is used in the name-length byte of a word definition header::
 
   .equ IMMED = 0x80
@@ -878,16 +884,20 @@ interpret::
       rcall WORD_PFA ; get offset and length of next word in buffer.
       pushdownw      ; save offset and length
       rcall FIND_PFA ; find it in the dictionary, (X <- LFA)
-      one_char '^'
+
+      one_char '0'
       rcall DOTESS_PFA
+
       cpi TOS, 0xff
       brne _is_word
 
       ; is it a number?
       popupw ; get the offset and length back
       rcall NUMBER_PFA
-      one_char '#'
+
+      one_char '1'
       rcall DOTESS_PFA
+
       cpi TOSL, 0x00 ; all chars converted?
       brne _byee
       mov TOSL, TOS ; dup
@@ -895,35 +905,55 @@ interpret::
       one_char ' '
       ret
 
+    _byee:
+      popupw ; ditch the "error message"
+      one_char '2'
+      rcall EMIT_CRLF_PFA
+      ret
+
     _is_word:
       sbiw Y, 2 ; ditch offset and length
       pushdownw ; save a copy of LFA on the stack
+      one_char '3'
+      rcall DOTESS_PFA
 
       ; Calculate PFA and save it in Z.
       rcall TPFA_PFA ; get the PFA address (X <- PFA)
-      movw Z, X
+      movw pfa_high:pfa_low, X
 
       ; Check if the word is flagged as immediate.
       popupw ; get the LFA again
-      st Y+, ZL ; save PFA on stack to clear Z for IMMEDIATE_P
-      st Y+, ZH
+      one_char '4'
+      rcall DOTESS_PFA
       rcall IMMEDIATE_P_PFA ; stack is one (byte) cell less ( LFA:LFA - imm? )
-      mov ZH, TOSL ; restore PFA to Z from stack
-      ld ZL, -Y
-      breq _execute_it
+      
+      one_char '5'
+      rcall DOTESS_PFA
+
+      ; result of IMMEDIATE is in TOS
+      cpi TOS, 0x00
+      brne _execute_it
 
       ; word is not immediate, check State and act accordingly
-      st Y+, TOSL ; free up X register pair (Z still holds PFA)
+      st Y+, TOSL ; free up X register pair
       ldi TOSL, low(State_mem)
       ldi TOS, high(State_mem)
+      one_char '6'
+      rcall DOTESS_PFA
+
       ld TOS, X
+      one_char '7'
+      rcall DOTESS_PFA
+
       popup
+      one_char '8'
+      rcall DOTESS_PFA
       cpi TOS, 0x00 ; immediate mode?
       breq _execute_it
 
       ; compile mode
       st Y+, TOSL
-      movw X, Z ; PFA on stack
+      movw X, pfa_high:pfa_low ; PFA on stack
       z_here
       st Z+, TOSL ; write PFA to 'here'
       st Z+, TOS
@@ -934,15 +964,14 @@ interpret::
       ret
 
     _execute_it:
+      one_char 'z'
+      rcall DOTESS_PFA
       mov TOS, TOSL ; clear the stack for the "client" word
       popup
+      one_char 'Z'
+      rcall DOTESS_PFA
+      movw Z, pfa_high:pfa_low ; PFA in Z
       ijmp ; and execute it.
-
-    _byee:
-      popupw ; ditch the "error message"
-      one_char '?'
-      rcall EMIT_CRLF_PFA
-      ret
 
 immediate_p::
 
