@@ -138,6 +138,39 @@ Emit one character. (Kind of a debugging aid.)::
     rcall EMIT_HEX_PFA
   .ENDMACRO
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Data (SRAM) Organization
 ------------------------
 
@@ -515,45 +548,6 @@ key::
 
 
 word::
-
-    WORD:
-      .dw KEY
-      .db 4, "word"
-    WORD_PFA:
-     ; emits (WORD + 1)
-      rcall KEY_PFA ; Get next char onto stack.
-      ; is it blank?
-      cpi TOS, ' '
-      brne _a_key
-      rcall DROP_PFA ; remove the space
-      rjmp WORD_PFA ; get the next char.
-
-    _a_key:
-      ; set up buffer
-      ldi ZL, low(buffer)
-      ldi ZH, high(buffer)
-      ldi Working, 0x00
-      mov Current_key, Working
-      mov Buffer_top, Working
-
-    _find_length:
-      st Z+, TOS ; save the char to the buffer
-      rcall DROP_PFA ; ditch the char from the stack
-      inc Buffer_top
-     ; emits HMMDOT
-      rcall KEY_PFA
-      cpi TOS, ' '
-      breq _done_finding
-      rjmp _find_length ; continue searching for end of word.
-
-    _done_finding:
-      emits DONE_WORD
-      rcall EMIT_WORD_BUFFER_PFA
-      rcall EMIT_CRLF_PFA
-      st Y+, TOSL ; make room on stack
-      ldi TOS, 0x00 ; start offset in TOS (replacing leftover last char)
-      mov TOSL, Buffer_top ; length in TOSL
-      ret
 
 number Parse a number from "stdin"::
 

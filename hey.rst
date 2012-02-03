@@ -81,14 +81,30 @@ We also use a working register::
 
   .def Working = r16
 
+The "word" word needs to track how many bytes it's read::
 
+  .def word_counter = r17
 
 Data (SRAM) Organization
 ------------------------
 
-::
+On the 328P the first 256 bytes of data space are actually the registers
+and I/O ports (see the Datasheet fof details)::
 
   .dseg
+  .org SRAM_START
+
+Word Buffer
+~~~~~~~~~~~
+
+The "word" word reads the stream of characters returned by the "key" word
+and fills this buffer until it reaches a space character. It's only 64
+bytes because we're going to be using a single-byte length field and
+packing two bits of meta-data into it, leaving six bits to specify the
+word length, giving us a maximum possible name length of sixty-four::
+
+
+  buffer: .byte 0x40
 
 
 Data Stack
@@ -101,7 +117,7 @@ the data stack will be filled with whatever was in X before the first
 push, unless you load X (i.e. TOS and Just-Under-TOS) "manually" before
 dropping into the interpreter loop::
 
-  data_stack: .org 0x0100
+  data_stack: .org 0x0140 ; SRAM_START + buffer
 
 
 
@@ -202,7 +218,8 @@ Main Loop
 Our (very simple) main loop just calls "quit" over and over again::
 
   MAIN:
-    rcall KEY_PFA
+    rcall WORD_PFA
+    rcall EMIT_PFA
     rjmp MAIN
 
 Initialize the USART
@@ -271,7 +288,7 @@ Duplicate the top value on the stack::
 Emit
 ~~~~~
 
-emit - Pop the top item from the stack and send it to the serial port::
+Pop the top item from the stack and send it to the serial port::
 
     EMIT:
       .dw DUP
@@ -313,4 +330,62 @@ Drop the top item from the stack::
       popup
       ret
 
+Word
+~~~~~
+
+Now that we can receive bytes from the serial port, the next step is a
+"word" word that can parse space (hex 0x20) character-delimited words
+from the stream of incoming chars.::
+
+    WORD:
+      .dw DROP
+      .db 4, "word"
+    WORD_PFA:
+
+Get next char onto stack::
+
+      rcall KEY_PFA
+
+Is it a space character?::
+
+      cpi TOS, ' '
+      brne _a_key
+
+Then drop it from the stack and loop to get the next character::
+
+      rcall DROP_PFA
+      rjmp WORD_PFA
+
+If it's not a space character then begin saving chars to the word buffer.
+Set up the Z register to point to the buffer and reset the word_counter::
+
+    _a_key:
+      ldi ZL, low(buffer)
+      ldi ZH, high(buffer)
+      ldi word_counter, 0x00
+
+First, check that we haven't overflowed the buffer. If we have, silently
+"restart" the word, and just ditch whatever went before.::
+
+    _find_length:
+      cpi word_counter, 0x40
+      breq _a_key
+
+Save the char to the buffer and clear it from the stack::
+
+      st Z+, TOS
+      rcall DROP_PFA
+      inc word_counter
+
+Get the next character, breaking if it's a space character (hex 0x20)::
+
+      rcall KEY_PFA
+      cpi TOS, ' '
+      brne _find_length
+
+A space was found, copy length to TOS::
+
+      mov TOS, word_counter
+      ret
+      
 

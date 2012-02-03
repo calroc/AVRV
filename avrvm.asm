@@ -9,9 +9,14 @@
 
 .def Working = r16
 
-.dseg
+.def word_counter = r17
 
-data_stack: .org 0x0100
+.dseg
+.org SRAM_START
+
+buffer: .byte 0x40
+
+data_stack: .org 0x0140 ; SRAM_START + buffer
 
 .MACRO popup
   ld TOSL, -Y
@@ -65,7 +70,8 @@ rcall UART_INIT
 sei
 
 MAIN:
-  rcall KEY_PFA
+  rcall WORD_PFA
+  rcall EMIT_PFA
   rjmp MAIN
 
 UART_INIT:
@@ -128,3 +134,36 @@ DROP_PFA:
   mov TOS, TOSL
   popup
   ret
+
+WORD:
+  .dw DROP
+  .db 4, "word"
+WORD_PFA:
+
+rcall KEY_PFA
+
+cpi TOS, ' '
+brne _a_key
+
+rcall DROP_PFA
+rjmp WORD_PFA
+
+_a_key:
+  ldi ZL, low(buffer)
+  ldi ZH, high(buffer)
+  ldi word_counter, 0x00
+
+_find_length:
+  cpi word_counter, 0x40
+  breq _a_key
+
+st Z+, TOS
+rcall DROP_PFA
+inc word_counter
+
+rcall KEY_PFA
+cpi TOS, ' '
+brne _find_length
+
+mov TOS, word_counter
+ret
