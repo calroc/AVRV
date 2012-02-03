@@ -343,7 +343,7 @@ Write the top item on the stack to the serial port::
 
     ECHO:
       .dw EMIT
-      .db 4, "emit"
+      .db 4, "echo"
 
 First, loop on the UDRE0 bit of the UCSR0A register, which indicates that
 the data register is ready for a byte::
@@ -697,15 +697,6 @@ And go to the next one::
       rjmp _inny
 
 
-
-
-
-
-
-
-
-
-
 Find
 ~~~~~
 
@@ -723,8 +714,8 @@ Make room on the stack for address::
 
       mov word_counter, TOS
       st Y+, TOSL
-      ldi TOSL, low(TPFA)
-      ldi TOS, high(TPFA)
+      ldi TOSL, low(INTERPRET)
+      ldi TOS, high(INTERPRET)
 
 Check if TOS:TOSL == 0x0000::
 
@@ -809,13 +800,48 @@ target term match::
       ret ; LFA_current
 
 
+To PFA
+~~~~~~
+
+
+">pfa" Given a word's LFA (Link Field Address) in TOS:TOSL, find its PFA::
+
+    TPFA:
+      .dw FIND
+      .db 4, ">pfa"
+    TPFA_PFA:
+
+Point to name length and adjust the address::
+
+      adiw X, 1
+      pushdownw ; save address
+      rcall LEFT_SHIFT_WORD_PFA
+
+get the length::
+
+      movw Z, X
+      lpm Working, Z
+      popupw ; restore address
+
+We need to map from length in bytes to length in words while allowing
+for the padding bytes in even-length names::
+
+      lsr Working
+      inc Working       ; n <- (n >> 1) + 1
+      add TOSL, Working ; Add the adjusted name length to our prog mem pointer.
+      brcc _done_adding
+      inc TOS           ; Account for the carry bit if set.
+    _done_adding:
+      ret
+
+
 interpret
 ~~~~~~~~~
 
 ::
 
     INTERPRET:
-      .dw FIND
+      .dw TPFA
       .db 9, "interpret"
     INTERPRET_PFA:
 
@@ -867,60 +893,66 @@ We found the word, execute it::
       ijmp
 
 
-To PFA
-~~~~~~
+
+Conclusion
+----------
+
+So that is a useful not-quite-Forth interpreter. I've burned this
+program to my Pololu Baby Orangutan and it runs. I can connect to it
+over a serial connection to pins PD0 and PD1 (I'm using the Pololu USB
+AVR programmer and it's built in USB-to-TTL-compatible serial port.)
+
+The following thirteen words are defined above:
+
+- Key
+- Emit
+- Echo
+- Drop
+- Word
+- Number
+- <<w (Left Shift 16-bit Word)
+- Emithex
+- .s
+- Find
+- >pfa (To PFA)
+- Interpret
+
+Not bad for 716 bytes of machine code.
+
+To me it is exciting and even a bit incredible to be communicating to a
+chip smaller than (for instance) the pupil of my eye using a simple but
+effective command line interface that fits within one kilobyte of code.
 
 
-">pfa" Given a word's LFA (Link Field Address) in TOS:TOSL, find its PFA::
+Program-ability
+~~~~~~~~~~~~~~~
 
-    TPFA:
-      .dw INTERPRET
-      .db 4, ">pfa"
-    TPFA_PFA:
+The main difference between this engine and a real Forth is that AVRVM
+can't compile new words.
 
-Point to name length and adjust the address::
+In a more typical (or really, more original) Forth target architecture,
+the data and program RAM are not separate, and you could easily lay down
+new words in memory and immediately use them.
 
-      adiw X, 1
-      pushdownw ; save address
-      rcall LEFT_SHIFT_WORD_PFA
+With the split Harvard architecture of the AVR the program RAM is flash
+and can only be written to about a thousand times before risking
+degradation. (There is a 1K block of EEPROM memory which can be
+erased/written up to about 100,000 times. I'm ignoring it for now but
+hope to use it somehow in the future.)
 
-get the length::
+Since the data SRAM has only 2K, and since you can't directly execute
+code bytes from it, there's not really a lot of room for compiling words
+there.
 
-      movw Z, X
-      lpm Working, Z
-      popupw ; restore address
+We can compile words there and use the SPM instruction to copy them to
+flash RAM, and I plan to write some words to enable that at some point,
+but it makes a lot more sense to use the rest of the 32K program memory
+to include "libraries" of additional routines (Forth words) written in
+assembler (or C with proper interfacing) that can then be "driven" by
+small "scripts" stored in SRAM.
 
-We need to map from length in bytes to length in words while allowing
-for the padding bytes in even-length names::
-
-      lsr Working
-      inc Working       ; n <- (n >> 1) + 1
-      add TOSL, Working ; Add the adjusted name length to our prog mem pointer.
-      brcc _done_adding
-      inc TOS           ; Account for the carry bit if set.
-    _done_adding:
-      ret
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+The main drawback of this method could be the inability to debug commands
+(words) as you write them. But with careful coding and use of the
+simulator we should be able to develop stable commands without "burning
+out" too many processors (with Flash rewrites.)
 
