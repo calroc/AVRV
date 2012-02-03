@@ -93,6 +93,11 @@ Number keeps track of the digits it is comverting using this register::
 
   .def number_pointer = r9
 
+Registers used by FIND word::
+
+  .def find_buffer_char = r10
+  .def find_name_char = r11
+
 Data (SRAM) Organization
 ------------------------
 
@@ -247,9 +252,8 @@ Our (very simple) main loop just calls "quit" over and over again::
 
   MAIN:
     rcall WORD_PFA
-    rcall NUMBER_PFA
-    rcall EMIT_HEX_PFA
-    rcall EMIT_HEX_PFA
+    rcall FIND_PFA
+    rcall DOTESS_PFA
     rjmp MAIN
 
 Initialize the USART
@@ -602,5 +606,229 @@ Z points at correct char::
       lpm TOS, Z
       rcall EMIT_PFA
       ret
+
+
+.S
+~~~~~
+
+Print out the stack::
+
+    DOTESS:
+      .dw EMIT_HEX
+      .db 2, ".s"
+    DOTESS_PFA:
+
+Make room on the stack::
+
+      rcall DUP_PFA
+
+Print out 'cr' 'lf' '['::
+
+      ldi TOS, 0x0d ; CR
+      rcall ECHO_PFA
+      ldi TOS, 0x0a ; LF
+      rcall ECHO_PFA
+      ldi TOS, '['
+      rcall ECHO_PFA
+
+Print (as hex) TOS and TOSL. First copy TOSL to TOS to get the value back
+but leave the stack at the same depth, then call emithex which will pop
+a value::
+
+      mov TOS, TOSL
+      rcall EMIT_HEX_PFA
+
+Now we're back to where we started.::
+
+      mov Working, TOSL
+      rcall DUP_PFA      ; tos, tos, tosl
+      mov TOS, Working   ; tosl, tos, tosl
+      rcall DUP_PFA      ; tosl, tosl, tos, tosl
+      ldi TOS, '-'       ; '-', tosl, tos, tosl
+      rcall EMIT_PFA     ; tosl, tos, tosl
+      rcall EMIT_HEX_PFA ; tos, tosl
+
+      rcall DUP_PFA  ; tos, tos, tosl
+      ldi TOS, ' '   ; ' ', tos, tosl
+      rcall EMIT_PFA ; tos, tosl
+
+Point Z at the top of the stack (the part of the stack "under" TOS and
+TOSL)::
+
+      movw Z, Y
+      rcall DUP_PFA
+
+    _inny:
+
+If the Z register is the same as or higher than data_stack print the
+item at Z::
+
+      ldi Working, low(data_stack)
+      cp ZL, Working
+      ldi Working, high(data_stack)
+      cpc ZH, Working
+      brsh _itsok
+
+Otherwise, we're done::
+
+      ldi TOS, ']'
+      rcall ECHO_PFA
+      ldi TOS, 0x0d ; CR
+      rcall ECHO_PFA
+      ldi TOS, 0x0a ; LF
+      rcall EMIT_PFA
+      ret
+
+Load the value at (pre-decremented) Z and emit it as hex::
+
+    _itsok:
+      ld TOS, -Z
+      rcall EMIT_HEX_PFA
+      rcall DUP_PFA
+      ldi TOS, ' '
+      rcall ECHO_PFA
+
+And go to the next one::
+
+      rjmp _inny
+
+
+
+
+
+
+
+
+
+
+
+Find
+~~~~~
+
+Given the length of a word in the word_buffer, find attempts to find that
+word in the dictionary and return its LFA on the stack (in TOS:TOSL).
+If the word can't be found, put 0xffff into TOS:TOSL::
+
+
+    FIND:
+      .dw DOTESS
+      .db 4, "find"
+    FIND_PFA:
+
+Make room on the stack for address::
+
+      mov word_counter, TOS
+      st Y+, TOSL
+      ldi TOSL, low(FIND)
+      ldi TOS, high(FIND)
+
+Check if TOS:TOSL == 0x0000::
+
+    _look_up_word:
+      cpi TOSL, 0x00
+      brne _non_zero
+      cpse TOSL, TOS
+      rjmp _non_zero
+
+if TOS:TOSL == 0x0000 we're done::
+
+      ldi TOS, 0xff
+      ldi TOSL, 0xff
+      ret
+
+While TOS:TOSL != 0x0000 check if this it the right word::
+
+    _non_zero:
+
+Save current Link Field Address::
+
+      pushdownw
+
+Load Link Field Address of next word in the dictionary into the X
+register pair::
+
+      rcall LEFT_SHIFT_WORD_PFA
+      movw Z, X
+      lpm TOSL, Z+
+      lpm TOS, Z+
+
+Now stack has ( - LFA_next, LFA_current) Load length-of-name byte into a register::
+
+      lpm Working, Z+
+      cp Working, word_counter
+      breq _same_length
+
+Not the same length, ditch LFA_current and loop::
+
+      sbiw Y, 2
+      rjmp _look_up_word
+
+If they're the same length walk through both and compare them character
+by character.
+
+Length is in Working and word_counter. Z holds current word's name's
+first byte's address in program RAM. TOS:TOSL have the address of the
+next word's LFA. So stack has ( - LFA_next, LFA_current)
+
+Put address of search term in buffer into X (TOS:TOSL)::
+
+    _same_length:
+      pushdownw
+      ldi TOS, high(buffer)
+      ldi TOSL, low(buffer)
+
+stack ( - buffer, LFA_next, LFA_current)::
+
+    _compare_name_and_target_byte:
+      ld find_buffer_char, X+ ; from buffer
+      lpm find_name_char, Z+ ; from program RAM
+      cp find_buffer_char, find_name_char
+      breq _okay_dokay
+
+Not equal, clean up and go to next word::
+
+      popupw ; ditch search term address
+      sbiw Y, 2 ; ditch LFA_current
+      rjmp _look_up_word
+
+The chars are the same::
+
+    _okay_dokay:
+      dec Working
+      brne _compare_name_and_target_byte
+
+If we get here we've checked that every character in the name and the
+target term match::
+
+      popupw ; ditch search term address
+      popupw ; ditch LFA_next
+      ret ; LFA_current
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

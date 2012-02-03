@@ -245,14 +245,6 @@ Reset input buffer::
   mov Current_key, Working
   mov Buffer_top, Working
 
-Initialize Latest (current_key is Latest right now.)::
-
-  ldi ZL, low(Latest_mem)
-  ldi ZH, high(Latest_mem)
-  ldi Working, low(CURRENT_KEY_WORD)
-  st Z+, Working
-  ldi Working, high(CURRENT_KEY_WORD)
-  st Z, Working
 
   ldi TOS, 'O'
   ldi TOSL, 'k'
@@ -414,54 +406,6 @@ reset::
       rjmp 0x0000
 
 dot-ess::
-
-    DOTESS:
-      .dw RESET_BUTTON
-      .db 2, ".s"
-    DOTESS_PFA:
-      rcall EMIT_CRLF_PFA
-      one_char '['
-      rcall DUP_PFA
-      rcall EMIT_HEX_PFA
-    ;  one_chreg TOS
-      one_char '-'
-      mov Working, TOSL
-    ;  one_chreg Working
-      emithex Working
-      one_char ' '
-
-     ; ldi ZH, high(data_stack)
-     ; ldi ZL, low(data_stack)
-      movw Z, Y
-
-    _inny:
-      ldi Working, low(data_stack)
-      cp ZL, Working
-      ldi Working, high(data_stack)
-      cpc ZH, Working
-      breq _out
-
-      ld Working, -Z
-      ; one_chreg Working
-      emithex Working
-      one_char ' '
-
-      rjmp _inny
-
-    _out:
-      one_char ']'
-      rcall FUK
-      rcall EMIT_CRLF_PFA
-      ret
-
-    FUK:
-      cpse TOS, TOSL
-      rjmp _nah
-      one_char '+'
-      ret
-    _nah:
-      one_char '%'
-      ret
 
 Parsing
 ^^^^^^^

@@ -15,6 +15,9 @@
 
 .def number_pointer = r9
 
+.def find_buffer_char = r10
+.def find_name_char = r11
+
 .dseg
 .org SRAM_START
 
@@ -88,9 +91,8 @@ sei
 
 MAIN:
   rcall WORD_PFA
-  rcall NUMBER_PFA
-  rcall EMIT_HEX_PFA
-  rcall EMIT_HEX_PFA
+  rcall FIND_PFA
+  rcall DOTESS_PFA
   rjmp MAIN
 
 UART_INIT:
@@ -294,3 +296,119 @@ _edone:
 lpm TOS, Z
 rcall EMIT_PFA
 ret
+
+DOTESS:
+  .dw EMIT_HEX
+  .db 2, ".s"
+DOTESS_PFA:
+
+rcall DUP_PFA
+
+ldi TOS, 0x0d ; CR
+rcall ECHO_PFA
+ldi TOS, 0x0a ; LF
+rcall ECHO_PFA
+ldi TOS, '['
+rcall ECHO_PFA
+
+mov TOS, TOSL
+rcall EMIT_HEX_PFA
+
+mov Working, TOSL
+rcall DUP_PFA      ; tos, tos, tosl
+mov TOS, Working   ; tosl, tos, tosl
+rcall DUP_PFA      ; tosl, tosl, tos, tosl
+ldi TOS, '-'       ; '-', tosl, tos, tosl
+rcall EMIT_PFA     ; tosl, tos, tosl
+rcall EMIT_HEX_PFA ; tos, tosl
+
+rcall DUP_PFA  ; tos, tos, tosl
+ldi TOS, ' '   ; ' ', tos, tosl
+rcall EMIT_PFA ; tos, tosl
+
+  movw Z, Y
+  rcall DUP_PFA
+
+_inny:
+
+ldi Working, low(data_stack)
+cp ZL, Working
+ldi Working, high(data_stack)
+cpc ZH, Working
+brsh _itsok
+
+ldi TOS, ']'
+rcall ECHO_PFA
+ldi TOS, 0x0d ; CR
+rcall ECHO_PFA
+ldi TOS, 0x0a ; LF
+rcall EMIT_PFA
+ret
+
+_itsok:
+  ld TOS, -Z
+  rcall EMIT_HEX_PFA
+  rcall DUP_PFA
+  ldi TOS, ' '
+  rcall ECHO_PFA
+
+rjmp _inny
+
+FIND:
+  .dw DOTESS
+  .db 4, "find"
+FIND_PFA:
+
+mov word_counter, TOS
+st Y+, TOSL
+ldi TOSL, low(FIND)
+ldi TOS, high(FIND)
+
+_look_up_word:
+  cpi TOSL, 0x00
+  brne _non_zero
+  cpse TOSL, TOS
+  rjmp _non_zero
+
+ldi TOS, 0xff
+ldi TOSL, 0xff
+ret
+
+_non_zero:
+
+pushdownw
+
+rcall LEFT_SHIFT_WORD_PFA
+movw Z, X
+lpm TOSL, Z+
+lpm TOS, Z+
+
+lpm Working, Z+
+cp Working, word_counter
+breq _same_length
+
+sbiw Y, 2
+rjmp _look_up_word
+
+_same_length:
+  pushdownw
+  ldi TOS, high(buffer)
+  ldi TOSL, low(buffer)
+
+_compare_name_and_target_byte:
+  ld find_buffer_char, X+ ; from buffer
+  lpm find_name_char, Z+ ; from program RAM
+  cp find_buffer_char, find_name_char
+  breq _okay_dokay
+
+popupw ; ditch search term address
+sbiw Y, 2 ; ditch LFA_current
+rjmp _look_up_word
+
+_okay_dokay:
+  dec Working
+  brne _compare_name_and_target_byte
+
+popupw ; ditch search term address
+popupw ; ditch LFA_next
+ret ; LFA_current

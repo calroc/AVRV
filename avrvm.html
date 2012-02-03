@@ -93,6 +93,11 @@ Z register will be used for diggin around in the dictionary.</p>
 <pre class="literal-block">
 .def number_pointer = r9
 </pre>
+<p>Registers used by FIND word:</p>
+<pre class="literal-block">
+.def find_buffer_char = r10
+.def find_name_char = r11
+</pre>
 </div>
 <div class="section" id="data-sram-organization">
 <h1>Data (SRAM) Organization</h1>
@@ -237,9 +242,8 @@ trigger the handler instead of just freaking out.</p>
 <pre class="literal-block">
 MAIN:
   rcall WORD_PFA
-  rcall NUMBER_PFA
-  rcall EMIT_HEX_PFA
-  rcall EMIT_HEX_PFA
+  rcall FIND_PFA
+  rcall DOTESS_PFA
   rjmp MAIN
 </pre>
 </div>
@@ -588,6 +592,189 @@ _edone:
 lpm TOS, Z
 rcall EMIT_PFA
 ret
+</pre>
+</div>
+<div class="section" id="s">
+<h2>.S</h2>
+<p>Print out the stack:</p>
+<pre class="literal-block">
+DOTESS:
+  .dw EMIT_HEX
+  .db 2, &quot;.s&quot;
+DOTESS_PFA:
+</pre>
+<p>Make room on the stack:</p>
+<pre class="literal-block">
+rcall DUP_PFA
+</pre>
+<p>Print out 'cr' 'lf' '[':</p>
+<pre class="literal-block">
+ldi TOS, 0x0d ; CR
+rcall ECHO_PFA
+ldi TOS, 0x0a ; LF
+rcall ECHO_PFA
+ldi TOS, '['
+rcall ECHO_PFA
+</pre>
+<p>Print (as hex) TOS and TOSL. First copy TOSL to TOS to get the value back
+but leave the stack at the same depth, then call emithex which will pop
+a value:</p>
+<pre class="literal-block">
+mov TOS, TOSL
+rcall EMIT_HEX_PFA
+</pre>
+<p>Now we're back to where we started.:</p>
+<pre class="literal-block">
+mov Working, TOSL
+rcall DUP_PFA      ; tos, tos, tosl
+mov TOS, Working   ; tosl, tos, tosl
+rcall DUP_PFA      ; tosl, tosl, tos, tosl
+ldi TOS, '-'       ; '-', tosl, tos, tosl
+rcall EMIT_PFA     ; tosl, tos, tosl
+rcall EMIT_HEX_PFA ; tos, tosl
+
+rcall DUP_PFA  ; tos, tos, tosl
+ldi TOS, ' '   ; ' ', tos, tosl
+rcall EMIT_PFA ; tos, tosl
+</pre>
+<p>Point Z at the top of the stack (the part of the stack &quot;under&quot; TOS and
+TOSL):</p>
+<pre class="literal-block">
+  movw Z, Y
+  rcall DUP_PFA
+
+_inny:
+</pre>
+<p>If the Z register is the same as or higher than data_stack print the
+item at Z:</p>
+<pre class="literal-block">
+ldi Working, low(data_stack)
+cp ZL, Working
+ldi Working, high(data_stack)
+cpc ZH, Working
+brsh _itsok
+</pre>
+<p>Otherwise, we're done:</p>
+<pre class="literal-block">
+ldi TOS, ']'
+rcall ECHO_PFA
+ldi TOS, 0x0d ; CR
+rcall ECHO_PFA
+ldi TOS, 0x0a ; LF
+rcall EMIT_PFA
+ret
+</pre>
+<p>Load the value at (pre-decremented) Z and emit it as hex:</p>
+<pre class="literal-block">
+_itsok:
+  ld TOS, -Z
+  rcall EMIT_HEX_PFA
+  rcall DUP_PFA
+  ldi TOS, ' '
+  rcall ECHO_PFA
+</pre>
+<p>And go to the next one:</p>
+<pre class="literal-block">
+rjmp _inny
+</pre>
+</div>
+<div class="section" id="find">
+<h2>Find</h2>
+<p>Given the length of a word in the word_buffer, find attempts to find that
+word in the dictionary and return its LFA on the stack (in TOS:TOSL).
+If the word can't be found, put 0xffff into TOS:TOSL:</p>
+<pre class="literal-block">
+FIND:
+  .dw DOTESS
+  .db 4, &quot;find&quot;
+FIND_PFA:
+</pre>
+<p>Make room on the stack for address:</p>
+<pre class="literal-block">
+mov word_counter, TOS
+st Y+, TOSL
+ldi TOSL, low(FIND)
+ldi TOS, high(FIND)
+</pre>
+<p>Check if TOS:TOSL == 0x0000:</p>
+<pre class="literal-block">
+_look_up_word:
+  cpi TOSL, 0x00
+  brne _non_zero
+  cpse TOSL, TOS
+  rjmp _non_zero
+</pre>
+<p>if TOS:TOSL == 0x0000 we're done:</p>
+<pre class="literal-block">
+ldi TOS, 0xff
+ldi TOSL, 0xff
+ret
+</pre>
+<p>While TOS:TOSL != 0x0000 check if this it the right word:</p>
+<pre class="literal-block">
+_non_zero:
+</pre>
+<p>Save current Link Field Address:</p>
+<pre class="literal-block">
+pushdownw
+</pre>
+<p>Load Link Field Address of next word in the dictionary into the X
+register pair:</p>
+<pre class="literal-block">
+rcall LEFT_SHIFT_WORD_PFA
+movw Z, X
+lpm TOSL, Z+
+lpm TOS, Z+
+</pre>
+<p>Now stack has ( - LFA_next, LFA_current) Load length-of-name byte into a register:</p>
+<pre class="literal-block">
+lpm Working, Z+
+cp Working, word_counter
+breq _same_length
+</pre>
+<p>Not the same length, ditch LFA_current and loop:</p>
+<pre class="literal-block">
+sbiw Y, 2
+rjmp _look_up_word
+</pre>
+<p>If they're the same length walk through both and compare them character
+by character.</p>
+<p>Length is in Working and word_counter. Z holds current word's name's
+first byte's address in program RAM. TOS:TOSL have the address of the
+next word's LFA. So stack has ( - LFA_next, LFA_current)</p>
+<p>Put address of search term in buffer into X (TOS:TOSL):</p>
+<pre class="literal-block">
+_same_length:
+  pushdownw
+  ldi TOS, high(buffer)
+  ldi TOSL, low(buffer)
+</pre>
+<p>stack ( - buffer, LFA_next, LFA_current):</p>
+<pre class="literal-block">
+_compare_name_and_target_byte:
+  ld find_buffer_char, X+ ; from buffer
+  lpm find_name_char, Z+ ; from program RAM
+  cp find_buffer_char, find_name_char
+  breq _okay_dokay
+</pre>
+<p>Not equal, clean up and go to next word:</p>
+<pre class="literal-block">
+popupw ; ditch search term address
+sbiw Y, 2 ; ditch LFA_current
+rjmp _look_up_word
+</pre>
+<p>The chars are the same:</p>
+<pre class="literal-block">
+_okay_dokay:
+  dec Working
+  brne _compare_name_and_target_byte
+</pre>
+<p>If we get here we've checked that every character in the name and the
+target term match:</p>
+<pre class="literal-block">
+popupw ; ditch search term address
+popupw ; ditch LFA_next
+ret ; LFA_current
 </pre>
 </div>
 </div>
