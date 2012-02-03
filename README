@@ -1,9 +1,9 @@
 This is a simple sort-of Forth system for AVR microcontrollers. It's
 written for the Pololu Baby Orangutan robot controller [1]
 
-Most of the documentation is in the form of comments in the source file,
-and the system in general probably won't make much sense unless you're
-already at least a little familiar with Forth.
+Most of the documentation is in the form of comments in the source file
+avrvm.rst and the system in general probably won't make much sense unless
+you're already at least a little familiar with Forth.
 
 There's no attempt to implement or adhere to any standard Forth. I'm just
 noodling around and creating the easiest version of what seems like it
@@ -13,63 +13,9 @@ Knowledge and inspiration came from myriad sources but especially
 noteworthy are: Brad Rodriguez' "Moving Forth" series [2] and Richard
 Jones' wonderful jonesforth "literate Forth" [3].
 
-
-
-Current list of implemented words:
-
-drop - pop the top item from the stack and discard it.
-
-swap - swap the top two items on the stack
-
-dup - duplicate the top item on the stack
-
-key - get the next character byte from the buffer and put it on the stack
-
-word - scan a space-delimited token (word name) from the buffer, put the
-       offset of the word in TOS and the length of the word in TOS-1
-
-find - give an offset and length (as from "word" above) on the stack
-       return the address of the word or 0xffff in TOS and TOS-1
-
-interpret - read the buffer and execute the named words
-
-<<w - left shift a 16-bit value in TOS and TOS-1 (used for addressing
-      flash RAM on the AVR)
-
-@ - given a byte offset in TOS look up its value in the heap (user
-    variable storage.) Used in conjunction with the variable words below
-
-var_does - class for variable instances, not word for interpreting.
-           puts its word's PFA onto the stack
-
-here - variable, points to free space on heap
-
-latest - variable, 16-bit, points to most recently defined word in dict.
-
-state - variable, compiling vs. interpreting (not used yet)
-
-ckey - variable, current read offset in input buffer
-
->pfa - given a word's address, calculates its PFA (Parameter Field
-       Address) where the word's code (or whatever) lives.
-
-
-
-
-example command lines:
-
-get the offset in the heap of the first free byte
-  here @
-
-look up the address of the machine code for the word "dup"
-  word dup find >pfa
-
-
-
-Pretty neat, and all in less than a kilobyte of machine code.
-
-
-
+You can use docutils' rst2html command to convert the ReST file to HTML,
+and the rest2asm.py script (which depends on docutils and BeautifulSoup)
+to convert it to asm for assembly to a hex file and flashing to a chip.
 
 [1] http://www.pololu.com/catalog/product/1220
 
