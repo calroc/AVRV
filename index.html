@@ -52,17 +52,30 @@
         <img border="0" width="90" src="https://github.com/images/modules/download/tar.png"></a>
     </div>
 
-    <h1><a href="https://github.com/calroc/AVRV">AVRV</a>
+    <h1><a href="https://github.com/calroc/AVRV">AVRVm</a>
       <span class="small">by <a href="https://github.com/calroc">calroc</a></span></h1>
 
     <div class="description">
       A simple Forth-like firmware kernal for Amtel AVR ATmega328P microcontroller.
     </div>
 
+    <div>
+    The main file of this program is a
+    <a href="http://en.wikipedia.org/wiki/ReStructuredText">ReStructuredText</a>
+    file <a href="https://github.com/calroc/AVRV/blob/master/avrvm.rst">avrvm.rst</a>
+    which I've included below, but it looks better at the link above.
+
+    It's meant as an attempt at <a href="http://en.wikipedia.org/wiki/Literate_programming">Literate programming</a> with the 
+    commentary interspersed with the actual code blocks forming an article or essay that describes as it implements.
+    
+    There is a <a href="https://github.com/calroc/AVRV/blob/master/rest2asm.py">simple Python script that converts the ReST file to an asm file</a> for assembly. (Currently it just strips out
+    the non-code parts, but I'd like to modify it to include them as asm comments, so that the resulting asm file is also
+    self-describing.)
+    </div>
     
 
-<div class="document" id="bot-initial-draft-mcp">
-<h1 class="title">Bot Initial Draft MCP</h1>
+<div class="document" id="robot-firmware">
+<h1 class="title">Robot Firmware</h1>
 
 <blockquote>
 <p>This program is free software: you can redistribute it and/or modify
@@ -76,15 +89,43 @@ GNU General Public License for more details.</p>
 <p>You should have received a copy of the GNU General Public License
 along with this program.  If not, see &lt;<a class="reference external" href="http://www.gnu.org/licenses/">http://www.gnu.org/licenses/</a>&gt;.</p>
 </blockquote>
+<div class="section" id="introduction">
+<h1>Introduction</h1>
+<p>This is a simple sort-of Forth system for AVR microcontrollers. It's
+written for the <a class="reference external" href="http://www.pololu.com/catalog/product/1220">Pololu Baby Orangutan robot controller</a></p>
+<p>The system in general probably won't make much sense unless you're
+already at least a little familiar with Forth. Two helpful sources are
+<a class="reference external" href="http://www.bradrodriguez.com/papers/moving1.htm">Brad Rodriguez' &quot;Moving Forth&quot; series</a> and <a class="reference external" href="http://rwmj.wordpress.com/2010/08/07/jonesforth-git-repository/">Richard
+Jones'</a> wonderful <a class="reference external" href="http://git.annexia.org/?p=jonesforth.git;a=summary">jonesforth &quot;literate Forth&quot;</a>.</p>
+<p>There's no attempt to implement or adhere to any standard Forth. I'm just
+noodling around and creating the easiest version of what seems like it
+will work.</p>
+</div>
 <div class="section" id="definitions">
 <h1>Definitions</h1>
-<p>Let's include the definitions for the ATmega328P:</p>
+<p>The Pololu Baby Orangutan is (currently) built around the Amtel
+ATmega328P, so let's start by including the definitions for that. (This
+file comes with the AVR Studio 4 software from Amtel.):</p>
 <pre class="literal-block">
 .nolist
 .include &quot;m328Pdef.inc&quot;
 .list
 .listmac
 </pre>
+<p>The AVR chip has a Harvard architecture with separate memories and buses for
+program and data RAM. The data bus, SRAM, and registers are eight bits wide,
+while the address bus and Flash memory (for persistent program storage)
+are sixteen bits wide.</p>
+<p>I've decided to try having the Top-Of-Stack (TOS) and the next 8-bit
+&quot;cell&quot; underneath it (which I call TOSL below) in two registers with the
+rest of the stack pointed to by another pair of registers.</p>
+<p>Certain pairs of 8-bit registers (namely the &quot;top&quot; six registers r26 -
+r31) can be used as 16-bit registers (namely X, Y, and Z) for addressing
+and some math functions</p>
+<p>If we use a pair of such registers as our TOS and TOSL it gives us the
+ability to, say, put the low and high bytes of an address in program or
+data RAM onto the stack and then efficiently use the 16-bit value to
+fetch or store from that location.</p>
 <p>Keep the top two items (bytes) on the stack in the X register:</p>
 <pre class="literal-block">
 .def TOS = r27 ; XH
@@ -92,62 +133,83 @@ along with this program.  If not, see &lt;<a class="reference external" href="ht
 </pre>
 <p>Y register is our Data Stack Pointer.
 Z register will be used for diggin around in the dictionary.</p>
+<p>We also use a working register:</p>
+<pre class="literal-block">
+.def Working = r16
+</pre>
+<p>The &quot;word&quot; word needs to track how many bytes it's read. This is also
+reused by find:</p>
+<pre class="literal-block">
+.def word_counter = r17
+</pre>
 <p>Base (numeric base for converting digits to numbers):</p>
 <pre class="literal-block">
 .def Base = r8
 </pre>
-<p>Buffer pointers:</p>
+<p>Number keeps track of the digits it is comverting using this register:</p>
 <pre class="literal-block">
-.def Current_key = r14
-.def Buffer_top = r15
-.def counter = r3 ; used for looping, etc.
-.def Hmm_reg = r4
-</pre>
-<p>We need a general use register:</p>
-<pre class="literal-block">
-.def Working = r16
-</pre>
-<p>Register used by WORD word:</p>
-<pre class="literal-block">
-.def word_temp = r17
+.def number_pointer = r9
 </pre>
 <p>Registers used by FIND word:</p>
 <pre class="literal-block">
 .def find_buffer_char = r10
 .def find_name_char = r11
-.def find_temp_offset = r12
-.def find_temp_length = r13
 </pre>
-<p>Registers used by &quot;to PFA&quot; word:</p>
+<p>Register used by Interpret:</p>
 <pre class="literal-block">
-.def tpfa_temp_high = r22
-.def tpfa_temp_low = r23
+.def temp_length = r12
 </pre>
-<p>Registers used by Interpret:</p>
+</div>
+<div class="section" id="data-sram-organization">
+<h1>Data (SRAM) Organization</h1>
+<p>On the 328P the first 256 bytes of data space are actually the registers
+and I/O ports (see the Datasheet fof details):</p>
 <pre class="literal-block">
-.def pfa_low = r24
-.def pfa_high = r25
+.dseg
+.org SRAM_START
 </pre>
-<p>This flag is used in the name-length byte of a word definition header:</p>
+<div class="section" id="word-buffer">
+<h2>Word Buffer</h2>
+<p>The &quot;word&quot; word reads the stream of characters returned by the &quot;key&quot; word
+and fills this buffer until it reaches a space character. It's only 64
+bytes because we're going to be using a single-byte length field and
+packing two bits of meta-data into it, leaving six bits to specify the
+word length, giving us a maximum possible name length of sixty-four:</p>
 <pre class="literal-block">
-.equ IMMED = 0x80
+buffer: .byte 0x40
 </pre>
+</div>
+<div class="section" id="data-stack">
+<h2>Data Stack</h2>
+<p>The Parameter (Data) Stack grows upward
+towards the Return Stack at the top of RAM. Note that the first two bytes
+of stack are kept in the X register. Due to this the initial two bytes of
+the data stack will be filled with whatever was in X before the first
+push, unless you load X (i.e. TOS and Just-Under-TOS) &quot;manually&quot; before
+dropping into the interpreter loop:</p>
+<pre class="literal-block">
+data_stack: .org 0x0140 ; SRAM_START + buffer
+</pre>
+</div>
+</div>
+<div class="section" id="code-flash-ram">
+<h1>Code (Flash RAM)</h1>
 <div class="section" id="macros">
 <h2>Macros</h2>
 <p>Some data stack manipulation macros to ease readability.</p>
-<p>Make room on TOS and TOSL by pushing them onto the data stack:</p>
-<pre class="literal-block">
-.MACRO pushdownw
-  st Y+, TOSL
-  st Y+, TOS
-.ENDMACRO
-</pre>
 <p>Pop from data stack to TOSL. Note that you are responsible for preserving
 the previous value of TOSL if you still want it after using the macro.
 (I.e. mov TOS, TOSL):</p>
 <pre class="literal-block">
 .MACRO popup
   ld TOSL, -Y
+.ENDMACRO
+</pre>
+<p>Make room on TOS and TOSL by pushing them onto the data stack:</p>
+<pre class="literal-block">
+.MACRO pushdownw
+  st Y+, TOSL
+  st Y+, TOS
 .ENDMACRO
 </pre>
 <p>Essentially &quot;drop drop&quot;:</p>
@@ -157,90 +219,13 @@ the previous value of TOSL if you still want it after using the macro.
   ld TOSL, -Y
 .ENDMACRO
 </pre>
-<p>Load Z register pair with SRAM address of next free byte in heap.
-This is faster than calling the here and data-fetch words:</p>
-<pre class="literal-block">
-.MACRO z_here
-  ldi ZL, low(Here_mem)
-  ldi ZH, high(Here_mem)
-  ld ZL, Z
-  ldi ZH, high(heap)
-.ENDMACRO
-</pre>
-<p>Write out the counted string:</p>
-<pre class="literal-block">
-.MACRO emits
-  pushdownw
-  ldi TOSL, low(&#64;0)
-  ldi TOS, high(&#64;0)
-  rcall EMITSTR_PFA
-.ENDMACRO
-</pre>
-<p>Emit one character. (Kind of a debugging aid.):</p>
-<pre class="literal-block">
-.MACRO one_char
-  rcall DUP_PFA
-  ldi TOS, &#64;0
-  rcall EMIT_PFA
-.ENDMACRO
-
-.MACRO one_chreg
-  rcall DUP_PFA
-  mov TOS, &#64;0
-  rcall EMIT_PFA
-.ENDMACRO
-
-      .MACRO emithex
-        st Y+, TOSL
-        mov TOSL, TOS
-        mov TOS, &#64;0
-        rcall EMIT_HEX_PFA
-      .ENDMACRO
-</pre>
 </div>
-</div>
-<div class="section" id="data-sram-organization">
-<h1>Data (SRAM) Organization</h1>
-<pre class="literal-block">
-.dseg
-</pre>
-<div class="section" id="storage-for-user-variables-heap">
-<h2>Storage for User Variables (Heap)</h2>
-<p>Create a 256-byte heap at the bottom of RAM and allot some initial
-system variables. On the ATmega328P the SRAM proper begins at 0x100:</p>
-<pre class="literal-block">
-heap: .org 0x0100
-State_mem: .byte 1
-Latest_mem: .byte 2
-Here_mem: .byte 1
-</pre>
-</div>
-<div class="section" id="input-buffer">
-<h2>Input Buffer</h2>
-<p>Next we have a buffer for input. For now, 128 bytes:</p>
-<pre class="literal-block">
-.org 0x0200
-buffer: .byte 0x80
-</pre>
-</div>
-<div class="section" id="data-stack">
-<h2>Data Stack</h2>
-<p>The Parameter (Data) Stack begins just after the buffer and grows upward
-towards the Return Stack at the top of RAM. Note that the first two bytes
-of stack are kept in the X register. Due to this the initial two bytes of
-the data stack will be filled with whatever was in X before the first
-push, unless you load X (i.e. TOS and Just-Under-TOS) &quot;manually&quot; before
-dropping into the interpreter loop:</p>
-<pre class="literal-block">
-data_stack: .org 0x0280
-</pre>
-</div>
-</div>
-<div class="section" id="code-flash-ram">
-<h1>Code (Flash RAM)</h1>
+<div class="section" id="begining-of-code-proper">
+<h2>Begining of code proper</h2>
 <pre class="literal-block">
 .cseg
 </pre>
+</div>
 <div class="section" id="interupt-vectors">
 <h2>Interupt Vectors</h2>
 <pre class="literal-block">
@@ -282,11 +267,6 @@ BAD_INTERUPT:
 RESET:
   cli
 </pre>
-<p>Initialize Base:</p>
-<pre class="literal-block">
-ldi Working, 10
-mov Base, Working
-</pre>
 <p>Set up the Return Stack:</p>
 <pre class="literal-block">
 ldi Working, low(RAMEND)
@@ -299,49 +279,14 @@ out SPH, Working
 ldi YL, low(data_stack)
 ldi YH, high(data_stack)
 </pre>
-<p>Set State to immediate (0):</p>
+<p>Set the UART to talk to a serial port:</p>
 <pre class="literal-block">
-ldi Working, 0x00
-ldi ZL, low(State_mem)
-ldi ZH, high(State_mem)
-st Z, Working
+rcall UART_INIT
 </pre>
-<p>Set HERE to point to just after itself:</p>
+<p>Initialize Base:</p>
 <pre class="literal-block">
-ldi Working, low(Here_mem) + 1
-ldi ZL, low(Here_mem)
-ldi ZH, high(Here_mem)
-st Z, Working
-</pre>
-<p>Reset input buffer:</p>
-<pre class="literal-block">
-ldi Working, low(buffer)
-mov Current_key, Working
-mov Buffer_top, Working
-</pre>
-<p>Initialize Latest (current_key is Latest right now.):</p>
-<pre class="literal-block">
-ldi ZL, low(Latest_mem)
-ldi ZH, high(Latest_mem)
-ldi Working, low(CURRENT_KEY_WORD)
-st Z+, Working
-ldi Working, high(CURRENT_KEY_WORD)
-st Z, Working
-</pre>
-<p>Initialize the USART. This could be broken out into words but I'm eager
-to get up and running:</p>
-<pre class="literal-block">
-ldi r17, high(520) ; 2400 baud w/ 20Mhz osc
-ldi r16, low(520)
-sts UBRR0H, r17
-sts UBRR0L, r16
-; The chip defaults to 8N1 so we won't set it here even though we
-; should.
-ldi r16, (1 &lt;&lt; TXEN0) | (1 &lt;&lt; RXEN0) ; Enable transmit/receive
-sts UCSR0B, r16
-
-ldi TOS, 'O'
-ldi TOSL, 'k'
+ldi Working, 10
+mov Base, Working
 </pre>
 <p>Re-enable interrupts:</p>
 <pre class="literal-block">
@@ -357,93 +302,64 @@ trigger the handler instead of just freaking out.</p>
 <p>Our (very simple) main loop just calls &quot;quit&quot; over and over again:</p>
 <pre class="literal-block">
 MAIN:
-  rcall WRITE_BANNER
-  ; rcall WORD_PFA
-  ; rcall FIND_PFA
-  ; rcall KEY_PFA
-  ; rcall EMIT_HEX_PFA
-  rcall QUIT_PFA
+  rcall INTERPRET_PFA
+  rcall DOTESS_PFA
   rjmp MAIN
 </pre>
-<p>Print this banner when starting:</p>
+</div>
+<div class="section" id="initialize-the-usart">
+<h2>Initialize the USART</h2>
 <pre class="literal-block">
-BANNER: .db 9, &quot;Welcome&quot;, 0x0d, 0x0a
-DONE_WORD: .db 11, &quot;word read&quot;, 0x0d, 0x0a
-HMMDOT: .db 1, '.'
-HEXDIGITS: .db &quot;0123456789abcdef&quot;
-</pre>
-<p>This routine takes the banner above and copies it to UART:</p>
-<pre class="literal-block">
-WRITE_BANNER:
-  emits BANNER
+UART_INIT:
+  ldi r17, high(520) ; 2400 baud w/ 20Mhz osc
+  ldi r16, low(520)  ; See Datasheet
+  sts UBRR0H, r17
+  sts UBRR0L, r16
+  ; The chip defaults to 8N1 so we won't set it here even though we
+  ; should.
+  ldi r16, (1 &lt;&lt; TXEN0) | (1 &lt;&lt; RXEN0) ; Enable transmit/receive
+  sts UCSR0B, r16
   ret
 </pre>
 </div>
-<div class="section" id="let-s-make-words">
-<h2>Let's make words</h2>
-<p>emithex:</p>
+</div>
+<div class="section" id="words">
+<h1>Words</h1>
+<p>These are the basic commands of the system that work together to
+implement the interpreter.</p>
+<div class="section" id="key">
+<h2>Key</h2>
+<p>Read a character from the serial port and push it onto the stack:</p>
 <pre class="literal-block">
-EMIT_HEX:
+KEY:
   .dw 0x0000
-  .db 7, &quot;emithex&quot;
-EMIT_HEX_PFA:
-  push ZH
-  push ZL
-  rcall DUP_PFA
-  swap TOS
-  rcall emit_nibble ; high
-  rcall emit_nibble ; low
-  pop ZL
-  pop ZH
-  ret
-
-emit_nibble:
-  pushdownw
-  ldi TOS, high(HEXDIGITS)
-  ldi TOSL, low(HEXDIGITS)
-  rcall LEFT_SHIFT_WORD_PFA
-  movw Z, X
-  popupw
-  andi TOS, 0x0f ; mask high nibble
-_eloop:
-  cpi TOS, 0x00
-  breq _edone ; If nibble is not zero...
-  dec TOS
-  adiw Z, 1 ; increment the HEXDIGITS pointer
-  rjmp _eloop
-_edone:
-  ; Z points at correct char
-  lpm TOS, Z
-  rcall EMIT_PFA
-  ret
+  .db 3, &quot;key&quot;
 </pre>
-<div class="section" id="id1">
-<h3>Data Stack</h3>
-<p>drop:</p>
+<p>First, loop on the RXC0 bit of the UCSR0A register, which indicates that
+a byte is available in the receive register:</p>
 <pre class="literal-block">
-DROP:
-  .dw 0 ; Initial link field is null.
-  .db 4, &quot;drop&quot;
-DROP_PFA:
-  mov TOS, TOSL
-  popup
-  ret
+KEY_PFA:
+  lds Working, UCSR0A
+  sbrs Working, RXC0
+  rjmp KEY_PFA
 </pre>
-<p>swap:</p>
+<p>Make room on the stack and load the character onto it from the UART's data register:</p>
 <pre class="literal-block">
-SWAP_:
-  .dw DROP
-  .db 4, &quot;swap&quot;
-SWAP_PFA:
-  mov Working, TOS
-  mov TOS, TOSL
-  mov TOSL, Working
-  ret
+rcall DUP_PFA
+lds TOS, UDR0
 </pre>
-<p>dup:</p>
+<p>Echo the char to the serial port:</p>
+<pre class="literal-block">
+rcall ECHO_PFA
+ret
+</pre>
+</div>
+<div class="section" id="dup">
+<h2>Dup</h2>
+<p>Duplicate the top value on the stack:</p>
 <pre class="literal-block">
 DUP:
-  .dw SWAP_
+  .dw KEY
   .db 3, &quot;dup&quot;
 DUP_PFA:
   st Y+, TOSL ; push TOSL onto data stack
@@ -451,446 +367,501 @@ DUP_PFA:
   ret
 </pre>
 </div>
-<div class="section" id="emit-and-reset">
-<h3>Emit and Reset</h3>
-<p>emit:</p>
+<div class="section" id="emit">
+<h2>Emit</h2>
+<p>Pop the top item from the stack and send it to the serial port:</p>
 <pre class="literal-block">
 EMIT:
   .dw DUP
   .db 4, &quot;emit&quot;
 EMIT_PFA:
+  rcall ECHO_PFA
+  rcall DROP_PFA
+  ret
+</pre>
+</div>
+<div class="section" id="echo">
+<h2>Echo</h2>
+<p>Write the top item on the stack to the serial port:</p>
+<pre class="literal-block">
+ECHO:
+  .dw EMIT
+  .db 4, &quot;echo&quot;
+</pre>
+<p>First, loop on the UDRE0 bit of the UCSR0A register, which indicates that
+the data register is ready for a byte:</p>
+<pre class="literal-block">
+ECHO_PFA:
   lds Working, UCSR0A
   sbrs Working, UDRE0
-  rjmp EMIT_PFA
+  rjmp ECHO_PFA
   sts UDR0, TOS
+  ret
+</pre>
+</div>
+<div class="section" id="drop">
+<h2>Drop</h2>
+<p>Drop the top item from the stack:</p>
+<pre class="literal-block">
+DROP:
+  .dw ECHO
+  .db 4, &quot;drop&quot;
+DROP_PFA:
   mov TOS, TOSL
   popup
   ret
 </pre>
-<p>This word takes the address of a (length, buffer) datastructure in
-program RAM and writes it to the UART. It consumes TOS and TOSL:</p>
-<pre class="literal-block">
-EMITSTR:
-  .dw EMIT
-  .db 7, &quot;emitstr&quot;
-EMITSTR_PFA:
-  push ZH
-  push ZL
-  rcall LEFT_SHIFT_WORD_PFA
-  movw Z, X
-  popupw
-  lpm counter, Z+
-_emitstr_loop:
-  lpm Working, Z+
-_taptaptap:
-  lds Hmm_reg, UCSR0A
-  sbrs Hmm_reg, UDRE0
-  rjmp _taptaptap
-  sts UDR0, Working
-  dec counter
-  brne _emitstr_loop
-  pop ZL
-  pop ZH
-  ret
-
-EMIT_WORD_BUFFER:
-  .dw EMITSTR
-  .db 6, &quot;ewbuff&quot;
-EMIT_WORD_BUFFER_PFA:
-  emits (EMIT_WORD_BUFFER + 1)
-
-  rcall DUP_PFA
-  mov TOS, Buffer_top
-  ldi Working, '0'
-  add TOS, Working
-  rcall EMIT_PFA
-
-  one_char '_'
-
-  ; rcall EMIT_CRLF_PFA
-  mov Working, Buffer_top
-  cpi Working, 0x00
-  brne _theres_a_word
-  ret
-
-_theres_a_word:
-  mov counter, Buffer_top
-  ldi ZL, low(buffer)
-  ldi ZH, high(buffer)
-
-_ewb_loop:
-  ld Working, Z+
-  one_chreg Working
-  dec counter
-  one_char ','
-  ; emits HMMDOT
-  brne _ewb_loop
-
-  rcall EMIT_CRLF_PFA
-  ret
-
-EMIT_CRLF:
-  .dw EMIT_WORD_BUFFER
-  .db 4, &quot;crlf&quot;
-EMIT_CRLF_PFA:
-  rcall DUP_PFA
-  ldi TOS, 0x0d ; CR
-  rcall EMIT_PFA
-  rcall DUP_PFA
-  ldi TOS, 0x0a ; LF
-  rcall EMIT_PFA
-  ret
-</pre>
-<p>reset:</p>
-<pre class="literal-block">
-RESET_BUTTON:
-  .dw EMIT_CRLF
-  .db 5, &quot;reset&quot;
-RESET_BUTTON_PFA:
-  rjmp 0x0000
-</pre>
-<p>dot-ess:</p>
-<pre class="literal-block">
-DOTESS:
-  .dw RESET_BUTTON
-  .db 2, &quot;.s&quot;
-DOTESS_PFA:
-  rcall EMIT_CRLF_PFA
-  one_char '['
-  rcall DUP_PFA
-  rcall EMIT_HEX_PFA
-;  one_chreg TOS
-  one_char '-'
-  mov Working, TOSL
-;  one_chreg Working
-  emithex Working
-  one_char ' '
-
- ; ldi ZH, high(data_stack)
- ; ldi ZL, low(data_stack)
-  movw Z, Y
-
-_inny:
-  ldi Working, low(data_stack)
-  cp ZL, Working
-  ldi Working, high(data_stack)
-  cpc ZH, Working
-  breq _out
-
-  ld Working, -Z
-  ; one_chreg Working
-  emithex Working
-  one_char ' '
-
-  rjmp _inny
-
-_out:
-  one_char ']'
-  rcall FUK
-  rcall EMIT_CRLF_PFA
-  ret
-
-FUK:
-  cpse TOS, TOSL
-  rjmp _nah
-  one_char '+'
-  ret
-_nah:
-  one_char '%'
-  ret
-</pre>
 </div>
-<div class="section" id="parsing">
-<h3>Parsing</h3>
-<p>key:</p>
-<pre class="literal-block">
-KEY:
-  .dw DOTESS
-  .db 3, &quot;key&quot;
-KEY_PFA:
-;  rcall DUP_PFA
-;  nop
-;  ret
-
-;  emits (KEY + 1)
-;  one_char '&gt;'
-;  one_char ' '
-_keyey:
-  lds Working, UCSR0A
-  sbrs Working, RXC0
-  rjmp _keyey
-  rcall DUP_PFA
-  lds TOS, UDR0
-  rcall DUP_PFA
-  rcall EMIT_PFA ; echo
-  ret
-</pre>
-<p>word:</p>
+<div class="section" id="word">
+<h2>Word</h2>
+<p>Now that we can receive bytes from the serial port, the next step is a
+&quot;word&quot; word that can parse space (hex 0x20) character-delimited words
+from the stream of incoming chars.:</p>
 <pre class="literal-block">
 WORD:
-  .dw KEY
+  .dw DROP
   .db 4, &quot;word&quot;
 WORD_PFA:
- ; emits (WORD + 1)
-  rcall KEY_PFA ; Get next char onto stack.
-  ; is it blank?
-  cpi TOS, ' '
-  brne _a_key
-  rcall DROP_PFA ; remove the space
-  rjmp WORD_PFA ; get the next char.
-
+</pre>
+<p>Get next char onto stack:</p>
+<pre class="literal-block">
+rcall KEY_PFA
+</pre>
+<p>Is it a space character?:</p>
+<pre class="literal-block">
+cpi TOS, ' '
+brne _a_key
+</pre>
+<p>Then drop it from the stack and loop to get the next character:</p>
+<pre class="literal-block">
+rcall DROP_PFA
+rjmp WORD_PFA
+</pre>
+<p>If it's not a space character then begin saving chars to the word buffer.
+Set up the Z register to point to the buffer and reset the word_counter:</p>
+<pre class="literal-block">
 _a_key:
-  ; set up buffer
   ldi ZL, low(buffer)
   ldi ZH, high(buffer)
-  ldi Working, 0x00
-  mov Current_key, Working
-  mov Buffer_top, Working
-
-_find_length:
-  st Z+, TOS ; save the char to the buffer
-  rcall DROP_PFA ; ditch the char from the stack
-  inc Buffer_top
- ; emits HMMDOT
-  rcall KEY_PFA
-  cpi TOS, ' '
-  breq _done_finding
-  rjmp _find_length ; continue searching for end of word.
-
-_done_finding:
-  emits DONE_WORD
-  rcall EMIT_WORD_BUFFER_PFA
-  rcall EMIT_CRLF_PFA
-  st Y+, TOSL ; make room on stack
-  ldi TOS, 0x00 ; start offset in TOS (replacing leftover last char)
-  mov TOSL, Buffer_top ; length in TOSL
-  ret
+  ldi word_counter, 0x00
 </pre>
-<p>number Parse a number from &quot;stdin&quot;:</p>
+<p>First, check that we haven't overflowed the buffer. If we have, silently
+&quot;restart&quot; the word, and just ditch whatever went before.:</p>
+<pre class="literal-block">
+_find_length:
+  cpi word_counter, 0x40
+  breq _a_key
+</pre>
+<p>Save the char to the buffer and clear it from the stack:</p>
+<pre class="literal-block">
+st Z+, TOS
+rcall DROP_PFA
+inc word_counter
+</pre>
+<p>Get the next character, breaking if it's a space character (hex 0x20):</p>
+<pre class="literal-block">
+rcall KEY_PFA
+cpi TOS, ' '
+brne _find_length
+</pre>
+<p>A space was found, copy length to TOS:</p>
+<pre class="literal-block">
+mov TOS, word_counter
+ret
+</pre>
+</div>
+<div class="section" id="number">
+<h2>Number</h2>
+<p>Parse a number from the word_buffer. The length of the word is in TOS.
+Return the number of characters unconverted in TOS and the value, or
+first unconverted character, in TOSL:</p>
 <pre class="literal-block">
 NUMBER:
   .dw WORD
   .db 6, &quot;number&quot;
 NUMBER_PFA:
-  ; offset in TOS, length in TOSL
-  ldi Working, 0
-  mov word_temp, TOSL ; length
-  mov TOSL, TOS
-  ldi TOS, high(buffer)
-  ; X points to digits
-  movw Z, X
-
-  ld TOS, Z+
-  rjmp _convert
-
+</pre>
+<p>Point Z at the buffer:</p>
+<pre class="literal-block">
+ldi ZL, low(buffer)
+ldi ZH, high(buffer)
+</pre>
+<p>We'll accumulate the number in Working. Set it to zero.
+Then save the length to number_pointer and load the first character into
+TOS:</p>
+<pre class="literal-block">
+mov number_pointer, TOS
+ldi Working, 0x00
+ld TOS, Z+
+rjmp _convert
+</pre>
+<p>This is where we loop back in if there is more than one digit to convert.
+We multiply the current accumulated value by the Base (the 16-bit result
+is placed in r1:r0) and load the next digit into TOS:</p>
+<pre class="literal-block">
 _convert_again:
   mul Working, Base
   mov Working, r0
   ld TOS, Z+
 
 _convert:
-  cpi TOS, '0'
-  brlo _num_err
-  cpi TOS, ':' ; the char after '9'
-  brlo _decimal
-  cpi TOS, 'a'
-  brlo _num_err
-  cpi TOS, 0x7b ; '{', the char after 'z'
-  brsh _num_err
-  subi TOS, 87 ; convert 'a'-'z' =&gt; 10-35
-  rjmp _converted
+</pre>
+<p>If the character is between '0' and '9' go to _decimal:</p>
+<pre class="literal-block">
+cpi TOS, '0'
+brlo _num_err
+cpi TOS, ':' ; the char after '9'
+brlo _decimal
+
+rjmp _num_err
+</pre>
+<p>For a decimal digit, just subtract '0' from the char to get the value:</p>
+<pre class="literal-block">
 _decimal:
   subi TOS, '0'
   rjmp _converted
+</pre>
+<p>If we encounter an unknown digit put the number of remaining unconverted
+digits into TOS and the unrecognized character in TOSL:</p>
+<pre class="literal-block">
 _num_err:
-  rcall DUP_PFA
-  rcall EMIT_PFA
+  st Y+, TOSL
   mov TOSL, TOS
-  mov TOS, word_temp
-  ret
-_converted:
-  add Working, TOS
-  dec word_temp
-  brne _convert_again
-
-  mov TOS, Working
+  mov TOS, number_pointer
   ret
 </pre>
+<p>Once we have a digit in TOS we can add it to our accumulator and, if
+there are more digits to convert, we loop back to keep converting them:</p>
+<pre class="literal-block">
+_converted:
+  add Working, TOS
+  dec number_pointer
+  brne _convert_again
+</pre>
+<p>We're done, move the result to TOSL and zero, signaling successful
+conversion, in TOS:</p>
+<pre class="literal-block">
+st Y+, TOSL
+mov TOSL, Working
+mov TOS, number_pointer
+ret
+</pre>
 </div>
-<div class="section" id="core-interpreting-and-compiling-words">
-<h3>Core Interpreting and Compiling Words</h3>
-<p>&quot;&lt;&lt;w&quot; shift a 16-bit value in TOS:TOSL one bit to the left:</p>
+<div class="section" id="left-shift-word-16-bit-value">
+<h2>Left Shift Word (16-Bit) Value</h2>
+<p>The AVR chip has a slight wrinkle when accessing program (flash) RAM.
+Because it is organized in 16-bit words there are 16K addresses to
+address the 32K of RAM. The architecture allows for reaching each byte
+by means of left-shifting the address and using the least significant
+bit to indicate low (0) or high (1) byte.</p>
+<p>This means that if we get an address from e.g. the return stack and
+we want to access data in program RAM with it we have to shift it one
+bit left. This word &quot;&lt;&lt;w&quot; shifts a 16-bit value in TOS:TOSL one bit to
+the left:</p>
 <pre class="literal-block">
 LEFT_SHIFT_WORD:
   .dw NUMBER
   .db 3, &quot;&lt;&lt;w&quot;
 LEFT_SHIFT_WORD_PFA:
   mov Working, TOS
-  clc ; clear carry flag
-  clr TOS ; clear TOS
+  clr TOS
   lsl TOSL
-  brcc _no_carry_var_does ; If the carry bit is clear skip incrementing TOS
+</pre>
+<p>If the carry bit is clear skip incrementing TOS:</p>
+<pre class="literal-block">
+  brcc _lslw0
   inc TOS ; copy carry flag to TOS[0]
-_no_carry_var_does:
+_lslw0:
   lsl Working
   or TOS, Working
-  ; X now contains left-shifted word, and carry bit reflects TOS carry.
-  ret
 </pre>
-<p>&quot;&#64;&quot; fetch a byte from the heap given its offset in TOS:</p>
+<p>X now contains left-shifted word, and carry bit reflects TOS carry:</p>
 <pre class="literal-block">
-DATA_FETCH:
+ret
+</pre>
+</div>
+<div class="section" id="emithex">
+<h2>Emithex</h2>
+<p>I want to be able to emit values (from the stack or wherever) as hex
+digits. This word pops the value on the stack and writes it to the serial
+port as two hex digits (high byte first):</p>
+<pre class="literal-block">
+HEXDIGITS: .db &quot;0123456789abcdef&quot;
+
+EMIT_HEX:
   .dw LEFT_SHIFT_WORD
-  .db 1, &quot;&#64;&quot;
-DATA_FETCH_PFA:
-  ldi ZH, high(heap)
-  mov ZL, TOS
-  ld TOS, Z ; Get byte from heap.
-  ret
+  .db 7, &quot;emithex&quot;
+EMIT_HEX_PFA:
 </pre>
-<p>create:</p>
+<p>Save Z register onto the return stack:</p>
 <pre class="literal-block">
-CREATE:
-  .dw DATA_FETCH
-  .db 6, &quot;create&quot;
-CREATE_PFA:
-  ; offset in TOS, length in TOSL, of new word's name
-
-  z_here ; Z now points to next free byte on heap.
-  adiw Z, 2 ; reserve space for the link to Latest
-
-  st Y+, TOSL ; store for later
-  mov word_temp, TOSL ; count
-  st Z+, TOSL ; store name length in compiling word
-  mov TOSL, TOS
-  ldi TOS, high(buffer)
-  ; X now points to the name in the buffer, Z to the destination
-
-_create_char_xfer:
-  ld Working, X+
-  st Z+, Working
-  dec word_temp
-  brne _create_char_xfer
-
-  ld TOSL, -Y ; pop length
-  lsr TOSL
-  brcs _word_aligned ; odd number, no alignment byte needed
-  clr TOSL
-  st Z+, TOSL ; write alignment byte
-_word_aligned:
-  ; The name has been laid down in SRAM.
-  ; Write ZL to Here_mem and we're done.
-  ldi TOSL, low(Here_mem)
-  ldi TOS, high(Here_mem)
-  st X, ZL
-  popupw ; ditch offset and (right-shifted) length
-  ret
+push ZH
+push ZL
 </pre>
-<p>find:</p>
+<p>Dup TOS, emit the low byte, then the high byte:</p>
+<pre class="literal-block">
+rcall DUP_PFA
+swap TOS
+rcall emit_nibble ; high
+rcall emit_nibble ; low
+</pre>
+<p>Restore Z from the return stack:</p>
+<pre class="literal-block">
+pop ZL
+pop ZH
+ret
+</pre>
+<p>So now to emit nybbles. This routine consumes TOS and clobbers Z:</p>
+<pre class="literal-block">
+emit_nibble:
+</pre>
+<p>Get the address of HEXDIGITS into Z:</p>
+<pre class="literal-block">
+pushdownw
+ldi TOS, high(HEXDIGITS)
+ldi TOSL, low(HEXDIGITS)
+rcall LEFT_SHIFT_WORD_PFA
+movw Z, X
+popupw
+</pre>
+<p>mask high nibble:</p>
+<pre class="literal-block">
+andi TOS, 0x0f
+</pre>
+<p>Since there's no direct way to add the nibble to Z (I could define a
+16-bit-plus-8-bit add word, and I probably will later) we'll use a loop
+and the adiw instruction:</p>
+<pre class="literal-block">
+_eloop:
+  cpi TOS, 0x00
+</pre>
+<p>If nibble is not zero...:</p>
+<pre class="literal-block">
+breq _edone
+dec TOS
+</pre>
+<p>Increment the HEXDIGITS pointer:</p>
+<pre class="literal-block">
+  adiw Z, 1
+  rjmp _eloop
+
+_edone:
+</pre>
+<p>Z points at correct char:</p>
+<pre class="literal-block">
+lpm TOS, Z
+rcall EMIT_PFA
+ret
+</pre>
+</div>
+<div class="section" id="s">
+<h2>.S</h2>
+<p>Print out the stack:</p>
+<pre class="literal-block">
+DOTESS:
+  .dw EMIT_HEX
+  .db 2, &quot;.s&quot;
+DOTESS_PFA:
+</pre>
+<p>Make room on the stack:</p>
+<pre class="literal-block">
+rcall DUP_PFA
+</pre>
+<p>Print out 'cr' 'lf' '[':</p>
+<pre class="literal-block">
+ldi TOS, 0x0d ; CR
+rcall ECHO_PFA
+ldi TOS, 0x0a ; LF
+rcall ECHO_PFA
+ldi TOS, '['
+rcall ECHO_PFA
+</pre>
+<p>Print (as hex) TOS and TOSL. First copy TOSL to TOS to get the value back
+but leave the stack at the same depth, then call emithex which will pop
+a value:</p>
+<pre class="literal-block">
+mov TOS, TOSL
+rcall EMIT_HEX_PFA
+</pre>
+<p>Now we're back to where we started.:</p>
+<pre class="literal-block">
+mov Working, TOSL
+rcall DUP_PFA      ; tos, tos, tosl
+mov TOS, Working   ; tosl, tos, tosl
+rcall DUP_PFA      ; tosl, tosl, tos, tosl
+ldi TOS, '-'       ; '-', tosl, tos, tosl
+rcall EMIT_PFA     ; tosl, tos, tosl
+rcall EMIT_HEX_PFA ; tos, tosl
+
+rcall DUP_PFA  ; tos, tos, tosl
+ldi TOS, ' '   ; ' ', tos, tosl
+rcall EMIT_PFA ; tos, tosl
+</pre>
+<p>Point Z at the top of the stack (the part of the stack &quot;under&quot; TOS and
+TOSL):</p>
+<pre class="literal-block">
+  movw Z, Y
+  rcall DUP_PFA
+
+_inny:
+</pre>
+<p>If the Z register is the same as or higher than data_stack print the
+item at Z:</p>
+<pre class="literal-block">
+ldi Working, low(data_stack)
+cp ZL, Working
+ldi Working, high(data_stack)
+cpc ZH, Working
+brsh _itsok
+</pre>
+<p>Otherwise, we're done:</p>
+<pre class="literal-block">
+ldi TOS, ']'
+rcall ECHO_PFA
+ldi TOS, 0x0d ; CR
+rcall ECHO_PFA
+ldi TOS, 0x0a ; LF
+rcall EMIT_PFA
+ret
+</pre>
+<p>Load the value at (pre-decremented) Z and emit it as hex:</p>
+<pre class="literal-block">
+_itsok:
+  ld TOS, -Z
+  rcall EMIT_HEX_PFA
+  rcall DUP_PFA
+  ldi TOS, ' '
+  rcall ECHO_PFA
+</pre>
+<p>And go to the next one:</p>
+<pre class="literal-block">
+rjmp _inny
+</pre>
+</div>
+<div class="section" id="find">
+<h2>Find</h2>
+<p>Given the length of a word in the word_buffer, find attempts to find that
+word in the dictionary and return its LFA on the stack (in TOS:TOSL).
+If the word can't be found, put 0xffff into TOS:TOSL:</p>
 <pre class="literal-block">
 FIND:
-  .dw CREATE
+  .dw DOTESS
   .db 4, &quot;find&quot;
 FIND_PFA:
-  ; TOS holds the offset in the buffer of the word to search for and TOSL
-  ; holds the length.
-  mov find_temp_offset, TOS
-  mov find_temp_length, TOSL
-  ldi ZH, high(Latest_mem)
-  ldi ZL, low(Latest_mem)
-  ld TOSL, Z+
-  ld TOS, Z
-
+</pre>
+<p>Make room on the stack for address:</p>
+<pre class="literal-block">
+mov word_counter, TOS
+st Y+, TOSL
+ldi TOSL, low(INTERPRET)
+ldi TOS, high(INTERPRET)
+</pre>
+<p>Check if TOS:TOSL == 0x0000:</p>
+<pre class="literal-block">
 _look_up_word:
-; LFA in TOS:TOSL, Z is free
-
-; Check if TOS:TOSL == 0x0000
-  cpi TOSL, 0
+  cpi TOSL, 0x00
   brne _non_zero
-  cpse TOSL, TOS ; ComPare Skip Equal
+  cpse TOSL, TOS
   rjmp _non_zero
-  ; if TOS:TOSL == 0x0000 we're done.
-  ldi TOS, 0xff ; consume TOS/TOSL and return 0xffff (we don't have that
-  ldi TOSL, 0xff ; much RAM so this is not a valid address value.)
-  ret
-
+</pre>
+<p>if TOS:TOSL == 0x0000 we're done:</p>
+<pre class="literal-block">
+ldi TOS, 0xff
+ldi TOSL, 0xff
+ret
+</pre>
+<p>While TOS:TOSL != 0x0000 check if this it the right word:</p>
+<pre class="literal-block">
 _non_zero:
-  ; Save current addy
-  pushdownw
-  ; now stack has ( - LFA, LFA)
-
-  ; Load Link Field Address of next word in the dictionary
-  ; into the X register pair.
-  rcall LEFT_SHIFT_WORD_PFA
-  movw Z, X
-  lpm TOSL, Z+
-  lpm TOS, Z+
-  ; now stack has ( - LFA_next, LFA_current)
-
-  lpm Working, Z+ ; Load length-of-name byte into a register
-  andi Working, 0x7f ; IMM_MASK
-  cp Working, find_temp_length
-  breq _same_length
-
-  ; Well, it ain't this one...
-  ; ditch LFA_current
-  sbiw Y, 2
-  rjmp _look_up_word
-
+</pre>
+<p>Save current Link Field Address:</p>
+<pre class="literal-block">
+pushdownw
+</pre>
+<p>Load Link Field Address of next word in the dictionary into the X
+register pair:</p>
+<pre class="literal-block">
+rcall LEFT_SHIFT_WORD_PFA
+movw Z, X
+lpm TOSL, Z+
+lpm TOS, Z+
+</pre>
+<p>Now stack has ( - LFA_next, LFA_current) Load length-of-name byte into a register:</p>
+<pre class="literal-block">
+lpm Working, Z+
+cp Working, word_counter
+breq _same_length
+</pre>
+<p>Not the same length, ditch LFA_current and loop:</p>
+<pre class="literal-block">
+sbiw Y, 2
+rjmp _look_up_word
+</pre>
+<p>If they're the same length walk through both and compare them character
+by character.</p>
+<p>Length is in Working and word_counter. Z holds current word's name's
+first byte's address in program RAM. TOS:TOSL have the address of the
+next word's LFA. So stack has ( - LFA_next, LFA_current)</p>
+<p>Put address of search term in buffer into X (TOS:TOSL):</p>
+<pre class="literal-block">
 _same_length:
-  ; If they're the same length walk through both and compare them ;
-  ; character by character.
-  ;
-  ; Buffer offset is in find_temp_offset
-  ; length is in Working and find_temp_length
-  ; Z holds current word's name's first byte's address in program RAM.
-  ; TOS:TOSL have the address of the next word's LFA.
-  ; stack has ( - LFA_next, LFA_current)
-
-  ; Put address of search term in buffer into X (TOS:TOSL).
   pushdownw
-  ldi TOS, high(buffer) ; Going to look up bytes in the buffer.
-  mov TOSL, find_temp_offset
-  ; stack ( - &amp;search_term, LFA_next, LFA_current)
-
+  ldi TOS, high(buffer)
+  ldi TOSL, low(buffer)
+</pre>
+<p>stack ( - buffer, LFA_next, LFA_current):</p>
+<pre class="literal-block">
 _compare_name_and_target_byte:
   ld find_buffer_char, X+ ; from buffer
   lpm find_name_char, Z+ ; from program RAM
   cp find_buffer_char, find_name_char
   breq _okay_dokay
-
-  ; not equal, clean up and go to next word.
-  popupw ; ditch search term address
-  sbiw Y, 2 ; ditch LFA_current
-  rjmp _look_up_word
-
-_okay_dokay:
-  ; The chars are the same
-  dec Working
-  brne _compare_name_and_target_byte ; More to do?
-
-  ; If we get here we've checked that every character in the name and the
-  ; target term match.
-  popupw ; ditch search term address
-  popupw ; ditch LFA_next
-  ret
 </pre>
+<p>Not equal, clean up and go to next word:</p>
+<pre class="literal-block">
+popupw ; ditch search term address
+sbiw Y, 2 ; ditch LFA_current
+rjmp _look_up_word
+</pre>
+<p>The chars are the same:</p>
+<pre class="literal-block">
+_okay_dokay:
+  dec Working
+  brne _compare_name_and_target_byte
+</pre>
+<p>If we get here we've checked that every character in the name and the
+target term match:</p>
+<pre class="literal-block">
+popupw ; ditch search term address
+popupw ; ditch LFA_next
+ret ; LFA_current
+</pre>
+</div>
+<div class="section" id="to-pfa">
+<h2>To PFA</h2>
 <p>&quot;&gt;pfa&quot; Given a word's LFA (Link Field Address) in TOS:TOSL, find its PFA:</p>
 <pre class="literal-block">
 TPFA:
   .dw FIND
   .db 4, &quot;&gt;pfa&quot;
 TPFA_PFA:
-  ; LFA of word should be on the stack (i.e. in X.)
-  adiw X, 1         ; point to name length.
-  movw tpfa_temp_high:tpfa_temp_low, X   ; set prog mem pointer value aside for later.
-  rcall LEFT_SHIFT_WORD_PFA ; Adjust the address
-  movw Z, X         ; and put it into our prog-mem-addressing Z register.
-  movw X, tpfa_temp_high:tpfa_temp_low
-  lpm Working, Z    ; get the length.
-  andi Working, 0x7f; IMM_MASK
-                    ; We need to map from length in bytes to length in words
-  lsr Working       ; while allowing for the padding bytes in even-length names.
+</pre>
+<p>Point to name length and adjust the address:</p>
+<pre class="literal-block">
+adiw X, 1
+pushdownw ; save address
+rcall LEFT_SHIFT_WORD_PFA
+</pre>
+<p>get the length:</p>
+<pre class="literal-block">
+movw Z, X
+lpm Working, Z
+popupw ; restore address
+</pre>
+<p>We need to map from length in bytes to length in words while allowing
+for the padding bytes in even-length names:</p>
+<pre class="literal-block">
+  lsr Working
   inc Working       ; n &lt;- (n &gt;&gt; 1) + 1
   add TOSL, Working ; Add the adjusted name length to our prog mem pointer.
   brcc _done_adding
@@ -898,326 +869,117 @@ TPFA_PFA:
 _done_adding:
   ret
 </pre>
-<p>quit Oddly enough, the Forth main loop is called &quot;quit&quot;:</p>
-<pre class="literal-block">
-QUIT:
-  .dw TPFA
-  .db 4, &quot;quit&quot;
-QUIT_PFA:
-  ldi Working, low(RAMEND) ; reset return stack
-  out SPL, Working
-  ldi Working, high(RAMEND)
-  out SPH, Working
-  rcall DOTESS_PFA
-  one_char '&gt;'
-  one_char ' '
-  rcall INTERPRET_PFA
-  rjmp QUIT_PFA
-</pre>
-<p>interpret:</p>
+</div>
+<div class="section" id="interpret">
+<h2>interpret</h2>
 <pre class="literal-block">
 INTERPRET:
-  .dw QUIT
+  .dw TPFA
   .db 9, &quot;interpret&quot;
 INTERPRET_PFA:
-  rcall WORD_PFA ; get offset and length of next word in buffer.
-  pushdownw      ; save offset and length
-  rcall FIND_PFA ; find it in the dictionary, (X &lt;- LFA)
-
-  one_char '0'
-  rcall DOTESS_PFA
-
-  cpi TOS, 0xff
-  brne _is_word
-
-  ; is it a number?
-  popupw ; get the offset and length back
-  rcall NUMBER_PFA
-
-  one_char '1'
-  rcall DOTESS_PFA
-
-  cpi TOSL, 0x00 ; all chars converted?
-  brne _byee
-  mov TOSL, TOS ; dup
-  rcall EMIT_HEX_PFA ; and consume
-  one_char ' '
-  ret
-
-_byee:
-  popupw ; ditch the &quot;error message&quot;
-  one_char '2'
-  rcall EMIT_CRLF_PFA
-  ret
-
+</pre>
+<p>get length of word in buffer:</p>
+<pre class="literal-block">
+rcall WORD_PFA
+</pre>
+<p>save length:</p>
+<pre class="literal-block">
+mov temp_length, TOS
+</pre>
+<p>Is it a number?:</p>
+<pre class="literal-block">
+rcall NUMBER_PFA
+cpi TOS, 0x00 ; all chars converted?
+brne _maybe_word
+</pre>
+<p>Then leave it on the stack:</p>
+<pre class="literal-block">
+mov TOS, TOSL
+popup
+ret
+</pre>
+<p>Otherwise, put length back on TOS and call find:</p>
+<pre class="literal-block">
+_maybe_word:
+  mov TOS, temp_length
+  popup
+  rcall FIND_PFA
+</pre>
+<p>Did we find the word?:</p>
+<pre class="literal-block">
+cpi TOS, 0xff
+brne _is_word
+</pre>
+<p>No? Emit a '?' and be done with it:</p>
+<pre class="literal-block">
+popup
+ldi TOS, '?'
+rcall EMIT_PFA
+ret
+</pre>
+<p>We found the word, execute it:</p>
+<pre class="literal-block">
 _is_word:
-  sbiw Y, 2 ; ditch offset and length
-  pushdownw ; save a copy of LFA on the stack
-  one_char '3'
-  rcall DOTESS_PFA
-
-  ; Calculate PFA and save it in Z.
-  rcall TPFA_PFA ; get the PFA address (X &lt;- PFA)
-  movw pfa_high:pfa_low, X
-
-  ; Check if the word is flagged as immediate.
-  popupw ; get the LFA again
-  one_char '4'
-  rcall DOTESS_PFA
-  rcall IMMEDIATE_P_PFA ; stack is one (byte) cell less ( LFA:LFA - imm? )
-
-  one_char '5'
-  rcall DOTESS_PFA
-
-  ; result of IMMEDIATE is in TOS
-  cpi TOS, 0x00
-  brne _execute_it
-
-  ; word is not immediate, check State and act accordingly
-  st Y+, TOSL ; free up X register pair
-  ldi TOSL, low(State_mem)
-  ldi TOS, high(State_mem)
-  one_char '6'
-  rcall DOTESS_PFA
-
-  ld TOS, X
-  one_char '7'
-  rcall DOTESS_PFA
-
-  popup
-  one_char '8'
-  rcall DOTESS_PFA
-  cpi TOS, 0x00 ; immediate mode?
-  breq _execute_it
-
-  ; compile mode
-  st Y+, TOSL
-  movw X, pfa_high:pfa_low ; PFA on stack
-  z_here
-  st Z+, TOSL ; write PFA to 'here'
-  st Z+, TOS
-  mov Working, ZL ; set here to, uh, here
-  ldi ZL, low(Here_mem)
-  ldi ZH, high(Here_mem)
-  st Z, Working
-  ret
-
-_execute_it:
-  one_char 'z'
-  rcall DOTESS_PFA
-  mov TOS, TOSL ; clear the stack for the &quot;client&quot; word
-  popup
-  one_char 'Z'
-  rcall DOTESS_PFA
-  movw Z, pfa_high:pfa_low ; PFA in Z
-  ijmp ; and execute it.
-</pre>
-<p>immediate_p:</p>
-<pre class="literal-block">
-IMMEDIATE_P:
-  .dw INTERPRET
-  .db 4, &quot;imm?&quot;
-IMMEDIATE_P_PFA:
-  ; LFA on stack
-  adiw X, 1
-  rcall LEFT_SHIFT_WORD_PFA
-  movw Z, X
-  lpm TOS, Z
-  popup
-  andi TOS, IMMED
-  cpi TOS, IMMED
-  ret
-</pre>
-<p>colon_does:</p>
-<pre class="literal-block">
-COLON_DOES:
-  .dw IMMEDIATE_P
-  .db 10, &quot;colon_does&quot;
-COLON_DOES_PFA:
-  pop ZH
-  pop ZL
-_aaagain:
-  push ZL
-  push ZH
-  pushdownw
-  movw X, Z
-  rcall LEFT_SHIFT_WORD_PFA
+  rcall TPFA_PFA
   movw Z, X
   popupw
-  lpm Working, Z+
-  lpm ZH, Z
-  mov ZL, Working
-  icall
-  pop ZH
-  pop ZL
-  adiw Z, 1
-  rjmp _aaagain
-</pre>
-<p>exit:</p>
-<pre class="literal-block">
-EXIT:
-  .dw COLON_DOES
-  .db 4, &quot;exit&quot;
-EXIT_PFA:
-  ; ditch return PC from the icall and the stored pointer to next PFA.
-  in ZL, SPL
-  in ZH, SPH
-  adiw Z, 4
-  out SPL, ZL
-  out SPH, ZH
-  ret
-</pre>
-<p>test routine for colon_does:</p>
-<pre class="literal-block">
-TEST_COL_D:
-  .dw EXIT
-  .db 3, &quot;tcd&quot;
-TCD_PFA:
-  rcall COLON_DOES_PFA
-  .dw DUP_PFA
-  .dw EXIT_PFA
-</pre>
-<p>&quot;[&quot;:</p>
-<pre class="literal-block">
-LBRAC:
-  .dw TEST_COL_D
-  .db (1 &amp; IMMED), &quot;[&quot;
-LBRAC_PFA:
-  ldi ZL, low(State_mem)
-  ldi ZH, high(State_mem)
-  ldi Working, 0x00
-  st Z, Working
-  ret
-</pre>
-<p>&quot;]&quot;:</p>
-<pre class="literal-block">
-RBRAC:
-  .dw LBRAC
-  .db 1, &quot;]&quot;
-RBRAC_PFA:
-  ldi ZL, low(State_mem)
-  ldi ZH, high(State_mem)
-  ldi Working, 0x01
-  st Z, Working
-  ret
-</pre>
-<p>&quot;:&quot;:</p>
-<pre class="literal-block">
-COLON:
-  .dw RBRAC
-  .db 1, &quot;:&quot;
-COLON_PFA:
-  rcall WORD_PFA
-  rcall CREATE_PFA
-  ; Write COLON_DOES_PFA to HERE and update HERE
-  z_here
-  ldi Working, low(COLON_DOES_PFA)
-  st Z+, Working
-  ldi Working, high(COLON_DOES_PFA)
-  st Z+, Working
-  ; Write ZL to Here_mem
-  mov Working, ZL
-  ldi ZL, low(Here_mem)
-  ldi ZH, high(Here_mem)
-  st Z, Working
-  ; switch to compiling mode
-  rcall RBRAC_PFA
-  ret
-</pre>
-<p>&quot;;&quot;:</p>
-<pre class="literal-block">
-SEMICOLON:
-  .dw COLON
-  .db (1 &amp; IMMED), &quot;;&quot;
-SEMICOLON_PFA:
-  z_here
-  ldi Working, low(EXIT_PFA)
-  st Z+, Working
-  ldi Working, high(EXIT_PFA)
-  st Z+, Working
-  mov Working, ZL
-  ldi ZL, low(Here_mem)
-  ldi ZH, high(Here_mem)
-  st Z, Working
-  ; switch back to immediate mode
-  rcall LBRAC_PFA
-  ret
+  ijmp
 </pre>
 </div>
 </div>
-<div class="section" id="variables-and-system-variable-words">
-<h2>Variables and system variable words</h2>
-<p>var_does:</p>
-<pre class="literal-block">
-VAR_DOES:
-  .dw SEMICOLON
-  .db 8, &quot;var_does&quot;
-VAR_DOES_PFA:
-  ; Get the address of the calling variable word's parameter field off
-  ; the return stack.  Pop the address to cancel the call to VAR_DOES by
-  ; the &quot;instance&quot; variable word.
-  pushdownw
-  pop TOS
-  pop TOSL
-  rcall LEFT_SHIFT_WORD_PFA
-  ; Stack now contains left-shifted PFA address.
-
-  ; Use it to look up the variable's memory address (in SRAM heap)
-  ; Put that address on the data stack (TOS). We only use the low byte
-  ; because we'll restrict access to SRAM in the fetch (&quot;&#64;&quot;) word.
-             ;
-  movw Z, X  ; Copy address to Z
-  popup      ; adjust the stack
-  lpm TOS, Z ; and use Z (PFA of variable instance word) to get the SRAM
-             ; offset of the variable's storage.
-
-  ret ; to the word that called the variable word.
-</pre>
-<p>here:</p>
-<pre class="literal-block">
-HERE_WORD:
-  .dw VAR_DOES
-  .db 4, &quot;here&quot;
-HERE_PFA:
-  rcall VAR_DOES_PFA
-  .db low(Here_mem), high(Here_mem) ; Note: I'm putting the full address
-                   ; here but the VAR_DOES machinery only uses low byte.
-  ; We don't need to ret here because VAR_DOES will consume the top of
-  ; the return stack. (I.e. the address of the Here_mem byte above.)
-</pre>
-<p>Latest:</p>
-<pre class="literal-block">
-LATEST_WORD:
-  .dw HERE_WORD
-  .db 6, &quot;latest&quot;
-Latest_PFA:
-  rcall VAR_DOES_PFA
-  .db low(Latest_mem), high(Latest_mem)
-</pre>
-<p>State:</p>
-<pre class="literal-block">
-STATE_WORD:
-  .dw LATEST_WORD
-  .db 5, &quot;state&quot;
-STATE_PFA:
-  rcall VAR_DOES_PFA
-  .db low(State_mem), high(State_mem)
-</pre>
-<p>Current_key:</p>
-<pre class="literal-block">
-CURRENT_KEY_WORD:
-  .dw STATE_WORD
-  .db 4, &quot;ckey&quot;
-CURRENT_KEY_PFA:
-  rcall DUP_PFA
-  mov TOS, Current_key
-  ret
-</pre>
+<div class="section" id="conclusion">
+<h1>Conclusion</h1>
+<p>So that is a useful not-quite-Forth interpreter. I've burned this
+program to my Pololu Baby Orangutan and it runs. I can connect to it
+over a serial connection to pins PD0 and PD1 (I'm using the Pololu USB
+AVR programmer and it's built in USB-to-TTL-compatible serial port.)</p>
+<p>The following thirteen words are defined above:</p>
+<ul class="simple">
+<li>Key</li>
+<li>Emit</li>
+<li>Echo</li>
+<li>Drop</li>
+<li>Word</li>
+<li>Number</li>
+<li>&lt;&lt;w (Left Shift 16-bit Word)</li>
+<li>Emithex</li>
+<li>.s</li>
+<li>Find</li>
+<li>&gt;pfa (To PFA)</li>
+<li>Interpret</li>
+</ul>
+<p>Not bad for 716 bytes of machine code.</p>
+<p>To me it is exciting and even a bit incredible to be communicating to a
+chip smaller than (for instance) the pupil of my eye using a simple but
+effective command line interface that fits within one kilobyte of code.</p>
+<div class="section" id="program-ability">
+<h2>Program-ability</h2>
+<p>The main difference between this engine and a real Forth is that AVRVM
+can't compile new words.</p>
+<p>In a more typical (or really, more original) Forth target architecture,
+the data and program RAM are not separate, and you could easily lay down
+new words in memory and immediately use them.</p>
+<p>With the split Harvard architecture of the AVR the program RAM is flash
+and can only be written to about a thousand times before risking
+degradation. (There is a 1K block of EEPROM memory which can be
+erased/written up to about 100,000 times. I'm ignoring it for now but
+hope to use it somehow in the future.)</p>
+<p>Since the data SRAM has only 2K, and since you can't directly execute
+code bytes from it, there's not really a lot of room for compiling words
+there.</p>
+<p>We can compile words there and use the SPM instruction to copy them to
+flash RAM, and I plan to write some words to enable that at some point,
+but it makes a lot more sense to use the rest of the 32K program memory
+to include &quot;libraries&quot; of additional routines (Forth words) written in
+assembler (or C with proper interfacing) that can then be &quot;driven&quot; by
+small &quot;scripts&quot; stored in SRAM.</p>
+<p>The main drawback of this method could be the inability to debug commands
+(words) as you write them. But with careful coding and use of the
+simulator we should be able to develop stable commands without &quot;burning
+out&quot; too many processors (with Flash rewrites.)</p>
 </div>
 </div>
-</div> 
-
-    
+</div>    
 
     
 
