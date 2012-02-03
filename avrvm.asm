@@ -18,6 +18,8 @@
 .def find_buffer_char = r10
 .def find_name_char = r11
 
+.def temp_length = r12
+
 .dseg
 .org SRAM_START
 
@@ -90,8 +92,7 @@ mov Base, Working
 sei
 
 MAIN:
-  rcall WORD_PFA
-  rcall FIND_PFA
+  rcall INTERPRET_PFA
   rcall DOTESS_PFA
   rjmp MAIN
 
@@ -361,8 +362,8 @@ FIND_PFA:
 
 mov word_counter, TOS
 st Y+, TOSL
-ldi TOSL, low(FIND)
-ldi TOS, high(FIND)
+ldi TOSL, low(TPFA)
+ldi TOS, high(TPFA)
 
 _look_up_word:
   cpi TOSL, 0x00
@@ -412,3 +413,60 @@ _okay_dokay:
 popupw ; ditch search term address
 popupw ; ditch LFA_next
 ret ; LFA_current
+
+INTERPRET:
+  .dw FIND
+  .db 9, "interpret"
+INTERPRET_PFA:
+
+rcall WORD_PFA
+
+mov temp_length, TOS
+
+rcall NUMBER_PFA
+cpi TOS, 0x00 ; all chars converted?
+brne _maybe_word
+
+mov TOS, TOSL
+popup
+ret
+
+_maybe_word:
+  mov TOS, temp_length
+  popup
+  rcall FIND_PFA
+
+cpi TOS, 0xff
+brne _is_word
+
+popup
+ldi TOS, '?'
+rcall EMIT_PFA
+ret
+
+_is_word:
+  rcall TPFA_PFA
+  movw Z, X
+  popupw
+  ijmp
+
+TPFA:
+  .dw INTERPRET
+  .db 4, ">pfa"
+TPFA_PFA:
+
+adiw X, 1
+pushdownw ; save address
+rcall LEFT_SHIFT_WORD_PFA
+
+movw Z, X
+lpm Working, Z
+popupw ; restore address
+
+  lsr Working
+  inc Working       ; n <- (n >> 1) + 1
+  add TOSL, Working ; Add the adjusted name length to our prog mem pointer.
+  brcc _done_adding
+  inc TOS           ; Account for the carry bit if set.
+_done_adding:
+  ret

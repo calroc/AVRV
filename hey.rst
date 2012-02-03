@@ -81,7 +81,8 @@ We also use a working register::
 
   .def Working = r16
 
-The "word" word needs to track how many bytes it's read::
+The "word" word needs to track how many bytes it's read. This is also
+reused by find::
 
   .def word_counter = r17
 
@@ -97,6 +98,10 @@ Registers used by FIND word::
 
   .def find_buffer_char = r10
   .def find_name_char = r11
+
+Register used by Interpret::
+
+  .def temp_length = r12
 
 Data (SRAM) Organization
 ------------------------
@@ -251,8 +256,7 @@ Main Loop
 Our (very simple) main loop just calls "quit" over and over again::
 
   MAIN:
-    rcall WORD_PFA
-    rcall FIND_PFA
+    rcall INTERPRET_PFA
     rcall DOTESS_PFA
     rjmp MAIN
 
@@ -719,8 +723,8 @@ Make room on the stack for address::
 
       mov word_counter, TOS
       st Y+, TOSL
-      ldi TOSL, low(FIND)
-      ldi TOS, high(FIND)
+      ldi TOSL, low(TPFA)
+      ldi TOS, high(TPFA)
 
 Check if TOS:TOSL == 0x0000::
 
@@ -805,9 +809,97 @@ target term match::
       ret ; LFA_current
 
 
+interpret
+~~~~~~~~~
+
+::
+
+    INTERPRET:
+      .dw FIND
+      .db 9, "interpret"
+    INTERPRET_PFA:
+
+get length of word in buffer::
+
+      rcall WORD_PFA
+
+save length::
+
+      mov temp_length, TOS
+
+Is it a number?::
+
+      rcall NUMBER_PFA
+      cpi TOS, 0x00 ; all chars converted?
+      brne _maybe_word
+
+Then leave it on the stack::
+
+      mov TOS, TOSL
+      popup
+      ret
+
+Otherwise, put length back on TOS and call find::
+
+    _maybe_word:
+      mov TOS, temp_length
+      popup
+      rcall FIND_PFA
+
+Did we find the word?::
+
+      cpi TOS, 0xff
+      brne _is_word
+
+No? Emit a '?' and be done with it::
+
+      popup
+      ldi TOS, '?'
+      rcall EMIT_PFA
+      ret
+
+We found the word, execute it::
+
+    _is_word:
+      rcall TPFA_PFA
+      movw Z, X
+      popupw
+      ijmp
 
 
+To PFA
+~~~~~~
 
+
+">pfa" Given a word's LFA (Link Field Address) in TOS:TOSL, find its PFA::
+
+    TPFA:
+      .dw INTERPRET
+      .db 4, ">pfa"
+    TPFA_PFA:
+
+Point to name length and adjust the address::
+
+      adiw X, 1
+      pushdownw ; save address
+      rcall LEFT_SHIFT_WORD_PFA
+
+get the length::
+
+      movw Z, X
+      lpm Working, Z
+      popupw ; restore address
+
+We need to map from length in bytes to length in words while allowing
+for the padding bytes in even-length names::
+
+      lsr Working
+      inc Working       ; n <- (n >> 1) + 1
+      add TOSL, Working ; Add the adjusted name length to our prog mem pointer.
+      brcc _done_adding
+      inc TOS           ; Account for the carry bit if set.
+    _done_adding:
+      ret
 
 
 

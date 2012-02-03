@@ -81,7 +81,8 @@ Z register will be used for diggin around in the dictionary.</p>
 <pre class="literal-block">
 .def Working = r16
 </pre>
-<p>The &quot;word&quot; word needs to track how many bytes it's read:</p>
+<p>The &quot;word&quot; word needs to track how many bytes it's read. This is also
+reused by find:</p>
 <pre class="literal-block">
 .def word_counter = r17
 </pre>
@@ -97,6 +98,10 @@ Z register will be used for diggin around in the dictionary.</p>
 <pre class="literal-block">
 .def find_buffer_char = r10
 .def find_name_char = r11
+</pre>
+<p>Register used by Interpret:</p>
+<pre class="literal-block">
+.def temp_length = r12
 </pre>
 </div>
 <div class="section" id="data-sram-organization">
@@ -241,8 +246,7 @@ trigger the handler instead of just freaking out.</p>
 <p>Our (very simple) main loop just calls &quot;quit&quot; over and over again:</p>
 <pre class="literal-block">
 MAIN:
-  rcall WORD_PFA
-  rcall FIND_PFA
+  rcall INTERPRET_PFA
   rcall DOTESS_PFA
   rjmp MAIN
 </pre>
@@ -693,8 +697,8 @@ FIND_PFA:
 <pre class="literal-block">
 mov word_counter, TOS
 st Y+, TOSL
-ldi TOSL, low(FIND)
-ldi TOS, high(FIND)
+ldi TOSL, low(TPFA)
+ldi TOS, high(TPFA)
 </pre>
 <p>Check if TOS:TOSL == 0x0000:</p>
 <pre class="literal-block">
@@ -775,6 +779,95 @@ target term match:</p>
 popupw ; ditch search term address
 popupw ; ditch LFA_next
 ret ; LFA_current
+</pre>
+</div>
+<div class="section" id="interpret">
+<h2>interpret</h2>
+<pre class="literal-block">
+INTERPRET:
+  .dw FIND
+  .db 9, &quot;interpret&quot;
+INTERPRET_PFA:
+</pre>
+<p>get length of word in buffer:</p>
+<pre class="literal-block">
+rcall WORD_PFA
+</pre>
+<p>save length:</p>
+<pre class="literal-block">
+mov temp_length, TOS
+</pre>
+<p>Is it a number?:</p>
+<pre class="literal-block">
+rcall NUMBER_PFA
+cpi TOS, 0x00 ; all chars converted?
+brne _maybe_word
+</pre>
+<p>Then leave it on the stack:</p>
+<pre class="literal-block">
+mov TOS, TOSL
+popup
+ret
+</pre>
+<p>Otherwise, put length back on TOS and call find:</p>
+<pre class="literal-block">
+_maybe_word:
+  mov TOS, temp_length
+  popup
+  rcall FIND_PFA
+</pre>
+<p>Did we find the word?:</p>
+<pre class="literal-block">
+cpi TOS, 0xff
+brne _is_word
+</pre>
+<p>No? Emit a '?' and be done with it:</p>
+<pre class="literal-block">
+popup
+ldi TOS, '?'
+rcall EMIT_PFA
+ret
+</pre>
+<p>We found the word, execute it:</p>
+<pre class="literal-block">
+_is_word:
+  rcall TPFA_PFA
+  movw Z, X
+  popupw
+  ijmp
+</pre>
+</div>
+<div class="section" id="to-pfa">
+<h2>To PFA</h2>
+<p>&quot;&gt;pfa&quot; Given a word's LFA (Link Field Address) in TOS:TOSL, find its PFA:</p>
+<pre class="literal-block">
+TPFA:
+  .dw INTERPRET
+  .db 4, &quot;&gt;pfa&quot;
+TPFA_PFA:
+</pre>
+<p>Point to name length and adjust the address:</p>
+<pre class="literal-block">
+adiw X, 1
+pushdownw ; save address
+rcall LEFT_SHIFT_WORD_PFA
+</pre>
+<p>get the length:</p>
+<pre class="literal-block">
+movw Z, X
+lpm Working, Z
+popupw ; restore address
+</pre>
+<p>We need to map from length in bytes to length in words while allowing
+for the padding bytes in even-length names:</p>
+<pre class="literal-block">
+  lsr Working
+  inc Working       ; n &lt;- (n &gt;&gt; 1) + 1
+  add TOSL, Working ; Add the adjusted name length to our prog mem pointer.
+  brcc _done_adding
+  inc TOS           ; Account for the carry bit if set.
+_done_adding:
+  ret
 </pre>
 </div>
 </div>
