@@ -43,7 +43,9 @@ already at least a little familiar with Forth. Two helpful sources are
 Jones'</a> wonderful <a class="reference external" href="http://git.annexia.org/?p=jonesforth.git;a=summary">jonesforth &quot;literate Forth&quot;</a>.</p>
 <p>There's no attempt to implement or adhere to any standard Forth. I'm just
 noodling around and creating the easiest version of what seems like it
-will work.</p>
+will work.  It's also my first attempt at writing assembly code in over
+a decade, and the first time using AVR assembly, so there are certainly
+going to be some, uh, less-than-perfect code. Please bear with me.</p>
 </div>
 <div class="section" id="definitions">
 <h1>Definitions</h1>
@@ -339,8 +341,11 @@ ECHO_PFA:
   lds Working, UCSR0A
   sbrs Working, UDRE0
   rjmp ECHO_PFA
-  sts UDR0, TOS
-  ret
+</pre>
+<p>When it's ready, write the byte to the UART data register:</p>
+<pre class="literal-block">
+sts UDR0, TOS
+ret
 </pre>
 </div>
 <div class="section" id="drop">

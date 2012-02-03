@@ -354,6 +354,9 @@ the data register is ready for a byte::
       lds Working, UCSR0A
       sbrs Working, UDRE0
       rjmp ECHO_PFA
+
+When it's ready, write the byte to the UART data register::
+
       sts UDR0, TOS
       ret
 
