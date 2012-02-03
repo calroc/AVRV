@@ -293,7 +293,7 @@ Print this banner when starting::
   BANNER: .db 9, "Welcome", 0x0d, 0x0a
   DONE_WORD: .db 11, "word read", 0x0d, 0x0a
   HMMDOT: .db 1, '.'
-  HEXDIGITS: .db "0123456789abcdef"
+
 
 This routine takes the banner above and copies it to UART::
 
@@ -307,53 +307,11 @@ Let's make words
 
 emithex::
 
-    EMIT_HEX:
-      .dw 0x0000
-      .db 7, "emithex"
-    EMIT_HEX_PFA:
-      push ZH
-      push ZL
-      rcall DUP_PFA
-      swap TOS
-      rcall emit_nibble ; high
-      rcall emit_nibble ; low
-      pop ZL
-      pop ZH
-      ret
-    
-    emit_nibble:
-      pushdownw
-      ldi TOS, high(HEXDIGITS)
-      ldi TOSL, low(HEXDIGITS)
-      rcall LEFT_SHIFT_WORD_PFA
-      movw Z, X
-      popupw
-      andi TOS, 0x0f ; mask high nibble
-    _eloop:
-      cpi TOS, 0x00
-      breq _edone ; If nibble is not zero...
-      dec TOS
-      adiw Z, 1 ; increment the HEXDIGITS pointer
-      rjmp _eloop
-    _edone:
-      ; Z points at correct char
-      lpm TOS, Z
-      rcall EMIT_PFA
-      ret
-
 
 Data Stack
 ^^^^^^^^^^
 
 drop::
-
-    DROP:
-      .dw 0 ; Initial link field is null.
-      .db 4, "drop"
-    DROP_PFA:
-      mov TOS, TOSL
-      popup
-      ret
 
 swap::
 
@@ -368,30 +326,10 @@ swap::
 
 dup::
 
-    DUP:
-      .dw SWAP_
-      .db 3, "dup"
-    DUP_PFA:
-      st Y+, TOSL ; push TOSL onto data stack
-      mov TOSL, TOS
-      ret
-
 Emit and Reset
 ^^^^^^^^^^^^^^
 
 emit::
-
-    EMIT:
-      .dw DUP
-      .db 4, "emit"
-    EMIT_PFA:
-      lds Working, UCSR0A
-      sbrs Working, UDRE0
-      rjmp EMIT_PFA
-      sts UDR0, TOS
-      mov TOS, TOSL
-      popup
-      ret
 
 This word takes the address of a (length, buffer) datastructure in
 program RAM and writes it to the UART. It consumes TOS and TOSL::

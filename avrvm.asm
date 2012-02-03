@@ -90,6 +90,7 @@ MAIN:
   rcall WORD_PFA
   rcall NUMBER_PFA
   rcall EMIT_HEX_PFA
+  rcall EMIT_HEX_PFA
   rjmp MAIN
 
 UART_INIT:
@@ -218,7 +219,8 @@ _decimal:
   rjmp _converted
 
 _num_err:
-  rcall ECHO_PFA
+  st Y+, TOSL
+  mov TOSL, TOS
   mov TOS, number_pointer
   ret
 
@@ -227,7 +229,9 @@ _converted:
   dec number_pointer
   brne _convert_again
 
-mov TOS, Working
+st Y+, TOSL
+mov TOSL, Working
+mov TOS, number_pointer
 ret
 
 LEFT_SHIFT_WORD:
@@ -286,7 +290,7 @@ dec TOS
   rjmp _eloop
 
 _edone:
-  ; Z points at correct char
-  lpm TOS, Z
-  rcall EMIT_PFA
-  ret
+
+lpm TOS, Z
+rcall EMIT_PFA
+ret

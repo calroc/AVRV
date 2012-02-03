@@ -239,6 +239,7 @@ MAIN:
   rcall WORD_PFA
   rcall NUMBER_PFA
   rcall EMIT_HEX_PFA
+  rcall EMIT_HEX_PFA
   rjmp MAIN
 </pre>
 </div>
@@ -407,7 +408,9 @@ ret
 </div>
 <div class="section" id="number">
 <h2>Number</h2>
-<p>Parse a number from the word_buffer. The length of the word is in TOS:</p>
+<p>Parse a number from the word_buffer. The length of the word is in TOS.
+Return the number of characters unconverted in TOS and the value, or
+first unconverted character, in TOSL:</p>
 <pre class="literal-block">
 NUMBER:
   .dw WORD
@@ -454,13 +457,12 @@ _decimal:
   subi TOS, '0'
   rjmp _converted
 </pre>
-<p>If we encounter an unknown digit, echo it to the serial port then copy
-the remaining number of unconverted digits into TOS.  This makes it
-impossible to tell programatically if the conversion succeeded or not,
-which I'll fix later.:</p>
+<p>If we encounter an unknown digit put the number of remaining unconverted
+digits into TOS and the unrecognized character in TOSL:</p>
 <pre class="literal-block">
 _num_err:
-  rcall ECHO_PFA
+  st Y+, TOSL
+  mov TOSL, TOS
   mov TOS, number_pointer
   ret
 </pre>
@@ -472,9 +474,12 @@ _converted:
   dec number_pointer
   brne _convert_again
 </pre>
-<p>We're done, move the result to TOS and return:</p>
+<p>We're done, move the result to TOSL and zero, signaling successful
+conversion, in TOS:</p>
 <pre class="literal-block">
-mov TOS, Working
+st Y+, TOSL
+mov TOSL, Working
+mov TOS, number_pointer
 ret
 </pre>
 </div>
@@ -577,10 +582,12 @@ dec TOS
   rjmp _eloop
 
 _edone:
-  ; Z points at correct char
-  lpm TOS, Z
-  rcall EMIT_PFA
-  ret
+</pre>
+<p>Z points at correct char:</p>
+<pre class="literal-block">
+lpm TOS, Z
+rcall EMIT_PFA
+ret
 </pre>
 </div>
 </div>

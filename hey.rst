@@ -249,6 +249,7 @@ Our (very simple) main loop just calls "quit" over and over again::
     rcall WORD_PFA
     rcall NUMBER_PFA
     rcall EMIT_HEX_PFA
+    rcall EMIT_HEX_PFA
     rjmp MAIN
 
 Initialize the USART
@@ -420,7 +421,9 @@ A space was found, copy length to TOS::
 Number
 ~~~~~~
 
-Parse a number from the word_buffer. The length of the word is in TOS::
+Parse a number from the word_buffer. The length of the word is in TOS.
+Return the number of characters unconverted in TOS and the value, or
+first unconverted character, in TOSL::
 
     NUMBER:
       .dw WORD
@@ -467,13 +470,12 @@ For a decimal digit, just subtract '0' from the char to get the value::
       subi TOS, '0'
       rjmp _converted
 
-If we encounter an unknown digit, echo it to the serial port then copy
-the remaining number of unconverted digits into TOS.  This makes it
-impossible to tell programatically if the conversion succeeded or not,
-which I'll fix later.::
+If we encounter an unknown digit put the number of remaining unconverted
+digits into TOS and the unrecognized character in TOSL::
 
     _num_err:
-      rcall ECHO_PFA
+      st Y+, TOSL
+      mov TOSL, TOS
       mov TOS, number_pointer
       ret
 
@@ -485,9 +487,12 @@ there are more digits to convert, we loop back to keep converting them::
       dec number_pointer
       brne _convert_again
 
-We're done, move the result to TOS and return::
+We're done, move the result to TOSL and zero, signaling successful
+conversion, in TOS::
 
-      mov TOS, Working
+      st Y+, TOSL
+      mov TOSL, Working
+      mov TOS, number_pointer
       ret
 
 Left Shift Word (16-Bit) Value
@@ -591,7 +596,9 @@ Increment the HEXDIGITS pointer::
       rjmp _eloop
 
     _edone:
-      ; Z points at correct char
+
+Z points at correct char::
+
       lpm TOS, Z
       rcall EMIT_PFA
       ret
