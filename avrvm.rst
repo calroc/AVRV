@@ -1,7 +1,3 @@
-Base (numeric base for converting digits to numbers)::
-
-  .def Base = r8
-
 Buffer pointers::
 
   .def Current_key = r14
@@ -244,11 +240,6 @@ Next we have a buffer for input. For now, 128 bytes::
 
 
 
-Initialize Base::
-
-  ldi Working, 10
-  mov Base, Working
-
 Set State to immediate (0)::
 
   ldi Working, 0x00
@@ -291,6 +282,14 @@ Initialize Latest (current_key is Latest right now.)::
 
 
 
+NUMBER::
+
+      cpi TOS, 'a'
+      brlo _num_err
+      cpi TOS, 0x7b ; '{', the char after 'z'
+      brsh _num_err
+      subi TOS, 87 ; convert 'a'-'z' => 10-35
+      rjmp _converted
 
 
 
@@ -548,57 +547,6 @@ key::
 
 
 word::
-
-number Parse a number from "stdin"::
-
-    NUMBER:
-      .dw WORD
-      .db 6, "number"
-    NUMBER_PFA:
-      ; offset in TOS, length in TOSL
-      ldi Working, 0
-      mov word_temp, TOSL ; length
-      mov TOSL, TOS
-      ldi TOS, high(buffer)
-      ; X points to digits
-      movw Z, X
-
-      ld TOS, Z+
-      rjmp _convert
-
-    _convert_again:
-      mul Working, Base
-      mov Working, r0
-      ld TOS, Z+
-
-    _convert:
-      cpi TOS, '0'
-      brlo _num_err
-      cpi TOS, ':' ; the char after '9'
-      brlo _decimal
-      cpi TOS, 'a'
-      brlo _num_err
-      cpi TOS, 0x7b ; '{', the char after 'z'
-      brsh _num_err
-      subi TOS, 87 ; convert 'a'-'z' => 10-35
-      rjmp _converted
-    _decimal:
-      subi TOS, '0'
-      rjmp _converted
-    _num_err:
-      rcall DUP_PFA
-      rcall EMIT_PFA
-      mov TOSL, TOS
-      mov TOS, word_temp
-      ret
-    _converted:
-      add Working, TOS
-      dec word_temp
-      brne _convert_again
-
-      mov TOS, Working
-      ret
-
 
 Core Interpreting and Compiling Words
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

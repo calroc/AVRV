@@ -11,6 +11,10 @@
 
 .def word_counter = r17
 
+.def Base = r8
+
+.def number_pointer = r9
+
 .dseg
 .org SRAM_START
 
@@ -67,10 +71,14 @@ ldi YH, high(data_stack)
 
 rcall UART_INIT
 
+ldi Working, 10
+mov Base, Working
+
 sei
 
 MAIN:
   rcall WORD_PFA
+  rcall NUMBER_PFA
   rcall EMIT_PFA
   rjmp MAIN
 
@@ -166,4 +174,49 @@ cpi TOS, ' '
 brne _find_length
 
 mov TOS, word_counter
+ret
+
+NUMBER:
+  .dw WORD
+  .db 6, "number"
+NUMBER_PFA:
+
+ldi ZL, low(buffer)
+ldi ZH, high(buffer)
+
+mov number_pointer, TOS
+ldi Working, 0x00
+ld TOS, Z+
+rjmp _convert
+
+_convert_again:
+  mul Working, Base
+  mov Working, r0
+  ld TOS, Z+
+
+_convert:
+
+cpi TOS, '0'
+brlo _num_err
+cpi TOS, ':' ; the char after '9'
+brlo _decimal
+
+rjmp _num_err
+
+_decimal:
+  subi TOS, '0'
+  rjmp _converted
+
+
+_num_err:
+  rcall ECHO_PFA
+  mov TOS, number_pointer
+  ret
+
+_converted:
+  add Working, TOS
+  dec number_pointer
+  brne _convert_again
+
+mov TOS, Working
 ret

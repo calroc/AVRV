@@ -85,6 +85,14 @@ The "word" word needs to track how many bytes it's read::
 
   .def word_counter = r17
 
+Base (numeric base for converting digits to numbers)::
+
+  .def Base = r8
+
+Number keeps track of the digits it is comverting using this register::
+
+  .def number_pointer = r9
+
 Data (SRAM) Organization
 ------------------------
 
@@ -203,6 +211,11 @@ Set the UART to talk to a serial port::
 
   rcall UART_INIT
 
+Initialize Base::
+
+  ldi Working, 10
+  mov Base, Working
+
 Re-enable interrupts::
 
   sei
@@ -219,6 +232,7 @@ Our (very simple) main loop just calls "quit" over and over again::
 
   MAIN:
     rcall WORD_PFA
+    rcall NUMBER_PFA
     rcall EMIT_PFA
     rjmp MAIN
 
@@ -317,7 +331,7 @@ the data register is ready for a byte::
       sts UDR0, TOS
       ret
 
-drop
+Drop
 ~~~~~
 
 Drop the top item from the stack::
@@ -388,4 +402,74 @@ A space was found, copy length to TOS::
       mov TOS, word_counter
       ret
       
+Number
+~~~~~~
+
+Parse a number from the word_buffer. The length of the word is in TOS::
+
+    NUMBER:
+      .dw WORD
+      .db 6, "number"
+    NUMBER_PFA:
+
+Point Z at the buffer::
+
+      ldi ZL, low(buffer)
+      ldi ZH, high(buffer)
+
+We'll accumulate the number in Working. Set it to zero.
+Then save the length to number_pointer and load the first character into
+TOS::
+
+      mov number_pointer, TOS
+      ldi Working, 0x00
+      ld TOS, Z+
+      rjmp _convert
+
+This is where we loop back in if there is more than one digit to convert.
+We multiply the current accumulated value by the Base (the 16-bit result
+is placed in r1:r0) and load the next digit into TOS::
+
+    _convert_again:
+      mul Working, Base
+      mov Working, r0
+      ld TOS, Z+
+
+    _convert:
+
+If the character is between '0' and '9' go to _decimal::
+
+      cpi TOS, '0'
+      brlo _num_err
+      cpi TOS, ':' ; the char after '9'
+      brlo _decimal
+
+      rjmp _num_err
+
+For a decimal digit, just subtract '0' from the char to get the value::
+
+    _decimal:
+      subi TOS, '0'
+      rjmp _converted
+
+
+    _num_err:
+      rcall ECHO_PFA
+      mov TOS, number_pointer
+      ret
+
+Once we have a digit in TOS we can add it to our accumulator and, if
+there are more digits to convert, we loop back to keep converting them::
+
+    _converted:
+      add Working, TOS
+      dec number_pointer
+      brne _convert_again
+
+We're done, move the result to TOS and return::
+
+      mov TOS, Working
+      ret
+
+
 
