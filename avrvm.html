@@ -702,8 +702,8 @@ FIND_PFA:
 <pre class="literal-block">
 mov word_counter, TOS
 st Y+, TOSL
-ldi TOSL, low(INTERPRET)
-ldi TOS, high(INTERPRET)
+ldi TOSL, low(PB4_TOGGLE)
+ldi TOS, high(PB4_TOGGLE)
 </pre>
 <p>Check if TOS:TOSL == 0x0000:</p>
 <pre class="literal-block">
@@ -926,6 +926,41 @@ small &quot;scripts&quot; stored in SRAM.</p>
 (words) as you write them. But with careful coding and use of the
 simulator we should be able to develop stable commands without &quot;burning
 out&quot; too many processors (with Flash rewrites.)</p>
+</div>
+</div>
+<div class="section" id="additional-functionality">
+<h1>Additional Functionality</h1>
+<p>Now that we have a nice little kernal, let's add some interesting
+commands to exercise our &quot;robot brain&quot;.</p>
+<div class="section" id="blinkenlights">
+<h2>Blinkenlights</h2>
+<p>The AVR's digital output lines can be used to drive LEDs. Here are some
+commands to set up a pin (PB4) for output and toggle it to turn an LED
+on and off:</p>
+<pre class="literal-block">
+PB4_OUT:
+  .dw INTERPRET
+  .db 4, &quot;pb4o&quot;
+PB4_OUT_PFA:
+</pre>
+<p>Set the direction to output:</p>
+<pre class="literal-block">
+sbi DDRB, DDB4
+</pre>
+<p>Turn the port bit off:</p>
+<pre class="literal-block">
+sbi PORTB, PORTB4
+ret
+</pre>
+<p>And a command to toggle the pin to turn the light on and off:</p>
+<pre class="literal-block">
+PB4_TOGGLE:
+  .dw PB4_OUT
+  .db 4, &quot;pb4t&quot;
+PB4_TOGGLE_PFA:
+  sbi PINB, PINB4
+  ret
+</pre>
 </div>
 </div>
 </div>

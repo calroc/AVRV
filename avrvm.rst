@@ -719,8 +719,8 @@ Make room on the stack for address::
 
       mov word_counter, TOS
       st Y+, TOSL
-      ldi TOSL, low(INTERPRET)
-      ldi TOS, high(INTERPRET)
+      ldi TOSL, low(PB4_TOGGLE)
+      ldi TOS, high(PB4_TOGGLE)
 
 Check if TOS:TOSL == 0x0000::
 
@@ -960,4 +960,45 @@ The main drawback of this method could be the inability to debug commands
 (words) as you write them. But with careful coding and use of the
 simulator we should be able to develop stable commands without "burning
 out" too many processors (with Flash rewrites.)
+
+
+
+
+Additional Functionality
+------------------------
+
+
+Now that we have a nice little kernal, let's add some interesting
+commands to exercise our "robot brain".
+
+Blinkenlights
+~~~~~~~~~~~~~
+
+
+The AVR's digital output lines can be used to drive LEDs. Here are some
+commands to set up a pin (PB4) for output and toggle it to turn an LED
+on and off::
+
+    PB4_OUT:
+      .dw INTERPRET
+      .db 4, "pb4o"
+    PB4_OUT_PFA:
+
+Set the direction to output::
+
+      sbi DDRB, DDB4
+
+Turn the port bit off::
+
+      sbi PORTB, PORTB4
+      ret
+
+And a command to toggle the pin to turn the light on and off::
+
+    PB4_TOGGLE:
+      .dw PB4_OUT
+      .db 4, "pb4t"
+    PB4_TOGGLE_PFA:
+      sbi PINB, PINB4
+      ret
 

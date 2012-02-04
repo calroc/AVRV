@@ -140,14 +140,15 @@ EMIT_PFA:
 
 ECHO:
   .dw EMIT
-  .db 4, "emit"
+  .db 4, "echo"
 
 ECHO_PFA:
   lds Working, UCSR0A
   sbrs Working, UDRE0
   rjmp ECHO_PFA
-  sts UDR0, TOS
-  ret
+
+sts UDR0, TOS
+ret
 
 DROP:
   .dw ECHO
@@ -362,8 +363,8 @@ FIND_PFA:
 
 mov word_counter, TOS
 st Y+, TOSL
-ldi TOSL, low(TPFA)
-ldi TOS, high(TPFA)
+ldi TOSL, low(PB4_TOGGLE)
+ldi TOS, high(PB4_TOGGLE)
 
 _look_up_word:
   cpi TOSL, 0x00
@@ -414,8 +415,29 @@ popupw ; ditch search term address
 popupw ; ditch LFA_next
 ret ; LFA_current
 
-INTERPRET:
+TPFA:
   .dw FIND
+  .db 4, ">pfa"
+TPFA_PFA:
+
+adiw X, 1
+pushdownw ; save address
+rcall LEFT_SHIFT_WORD_PFA
+
+movw Z, X
+lpm Working, Z
+popupw ; restore address
+
+  lsr Working
+  inc Working       ; n <- (n >> 1) + 1
+  add TOSL, Working ; Add the adjusted name length to our prog mem pointer.
+  brcc _done_adding
+  inc TOS           ; Account for the carry bit if set.
+_done_adding:
+  ret
+
+INTERPRET:
+  .dw TPFA
   .db 9, "interpret"
 INTERPRET_PFA:
 
@@ -450,23 +472,19 @@ _is_word:
   popupw
   ijmp
 
-TPFA:
+PB4_OUT:
   .dw INTERPRET
-  .db 4, ">pfa"
-TPFA_PFA:
+  .db 4, "pb4o"
+PB4_OUT_PFA:
 
-adiw X, 1
-pushdownw ; save address
-rcall LEFT_SHIFT_WORD_PFA
+sbi DDRB, DDB4
 
-movw Z, X
-lpm Working, Z
-popupw ; restore address
+sbi PORTB, PORTB4
+ret
 
-  lsr Working
-  inc Working       ; n <- (n >> 1) + 1
-  add TOSL, Working ; Add the adjusted name length to our prog mem pointer.
-  brcc _done_adding
-  inc TOS           ; Account for the carry bit if set.
-_done_adding:
+PB4_TOGGLE:
+  .dw PB4_OUT
+  .db 4, "pb4t"
+PB4_TOGGLE_PFA:
+  sbi PINB, PINB4
   ret
