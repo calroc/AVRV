@@ -363,8 +363,8 @@ FIND_PFA:
 
 mov word_counter, TOS
 st Y+, TOSL
-ldi TOSL, low(PB4_TOGGLE)
-ldi TOS, high(PB4_TOGGLE)
+ldi TOSL, low(M1_REVERSE)
+ldi TOS, high(M1_REVERSE)
 
 _look_up_word:
   cpi TOSL, 0x00
@@ -487,4 +487,37 @@ PB4_TOGGLE:
   .db 4, "pb4t"
 PB4_TOGGLE_PFA:
   sbi PINB, PINB4
+  ret
+
+M1_ON:
+  .dw PB4_TOGGLE
+  .db 4, "m1on"
+M1_ON_PFA:
+  ldi Working, 0b11110011
+  out TCCR0A, Working
+  ldi Working, 0b00000010
+  out TCCR0B, Working
+  clr Working
+  out OCR0A, Working
+  out OCR0B, Working
+  sbi DDRD, DDD5
+  sbi DDRD, DDD6
+  ret
+
+M1_FORWARD:
+  .dw M1_ON
+  .db 3, "m1f"
+M1_FORWARD_PFA:
+  clr Working
+  out OCR0A, Working
+  out OCR0B, TOS
+  ret
+
+M1_REVERSE:
+  .dw M1_FORWARD
+  .db 3, "m1r"
+M1_REVERSE_PFA:
+  clr Working
+  out OCR0B, Working
+  out OCR0A, TOS
   ret

@@ -719,8 +719,8 @@ Make room on the stack for address::
 
       mov word_counter, TOS
       st Y+, TOSL
-      ldi TOSL, low(PB4_TOGGLE)
-      ldi TOS, high(PB4_TOGGLE)
+      ldi TOSL, low(M1_REVERSE)
+      ldi TOS, high(M1_REVERSE)
 
 Check if TOS:TOSL == 0x0000::
 
@@ -971,9 +971,9 @@ Additional Functionality
 Now that we have a nice little kernal, let's add some interesting
 commands to exercise our "robot brain".
 
+
 Blinkenlights
 ~~~~~~~~~~~~~
-
 
 The AVR's digital output lines can be used to drive LEDs. Here are some
 commands to set up a pin (PB4) for output and toggle it to turn an LED
@@ -1001,4 +1001,46 @@ And a command to toggle the pin to turn the light on and off::
     PB4_TOGGLE_PFA:
       sbi PINB, PINB4
       ret
+
+
+Motor Driver I
+~~~~~~~~~~~~~~
+
+The Pololu Baby Orangutan has two timers wired up to a motor controller.
+These commands set up the timer0 to drive the motor1 outputs (see
+http://www.pololu.com/docs/0J15/5 )::
+
+    M1_ON:
+      .dw PB4_TOGGLE
+      .db 4, "m1on"
+    M1_ON_PFA:
+      ldi Working, 0b11110011
+      out TCCR0A, Working
+      ldi Working, 0b00000010
+      out TCCR0B, Working
+      clr Working
+      out OCR0A, Working
+      out OCR0B, Working
+      sbi DDRD, DDD5
+      sbi DDRD, DDD6
+      ret
+
+    M1_FORWARD:
+      .dw M1_ON
+      .db 3, "m1f"
+    M1_FORWARD_PFA:
+      clr Working
+      out OCR0A, Working
+      out OCR0B, TOS
+      ret
+
+    M1_REVERSE:
+      .dw M1_FORWARD
+      .db 3, "m1r"
+    M1_REVERSE_PFA:
+      clr Working
+      out OCR0B, Working
+      out OCR0A, TOS
+      ret
+
 

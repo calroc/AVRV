@@ -702,8 +702,8 @@ FIND_PFA:
 <pre class="literal-block">
 mov word_counter, TOS
 st Y+, TOSL
-ldi TOSL, low(PB4_TOGGLE)
-ldi TOS, high(PB4_TOGGLE)
+ldi TOSL, low(M1_REVERSE)
+ldi TOS, high(M1_REVERSE)
 </pre>
 <p>Check if TOS:TOSL == 0x0000:</p>
 <pre class="literal-block">
@@ -959,6 +959,46 @@ PB4_TOGGLE:
   .db 4, &quot;pb4t&quot;
 PB4_TOGGLE_PFA:
   sbi PINB, PINB4
+  ret
+</pre>
+</div>
+<div class="section" id="motor-driver-i">
+<h2>Motor Driver I</h2>
+<p>The Pololu Baby Orangutan has two timers wired up to a motor controller.
+These commands set up the timer0 to drive the motor1 outputs (see
+<a class="reference external" href="http://www.pololu.com/docs/0J15/5">http://www.pololu.com/docs/0J15/5</a> ):</p>
+<pre class="literal-block">
+M1_ON:
+  .dw PB4_TOGGLE
+  .db 4, &quot;m1on&quot;
+M1_ON_PFA:
+  ldi Working, 0b11110011
+  out TCCR0A, Working
+  ldi Working, 0b00000010
+  out TCCR0B, Working
+  clr Working
+  out OCR0A, Working
+  out OCR0B, Working
+  sbi DDRD, DDD5
+  sbi DDRD, DDD6
+  ret
+
+M1_FORWARD:
+  .dw M1_ON
+  .db 3, &quot;m1f&quot;
+M1_FORWARD_PFA:
+  clr Working
+  out OCR0A, Working
+  out OCR0B, TOS
+  ret
+
+M1_REVERSE:
+  .dw M1_FORWARD
+  .db 3, &quot;m1r&quot;
+M1_REVERSE_PFA:
+  clr Working
+  out OCR0B, Working
+  out OCR0A, TOS
   ret
 </pre>
 </div>
