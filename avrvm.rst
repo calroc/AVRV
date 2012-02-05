@@ -719,8 +719,8 @@ Make room on the stack for address::
 
       mov word_counter, TOS
       st Y+, TOSL
-      ldi TOSL, low(M1_REVERSE)
-      ldi TOS, high(M1_REVERSE)
+      ldi TOSL, low(READ_TRIMPOT)
+      ldi TOS, high(READ_TRIMPOT)
 
 Check if TOS:TOSL == 0x0000::
 
@@ -988,7 +988,7 @@ Set the direction to output::
 
       sbi DDRB, DDB4
 
-Turn the port bit off::
+Turn the port bit on::
 
       sbi PORTB, PORTB4
       ret
@@ -1042,5 +1042,66 @@ http://www.pololu.com/docs/0J15/5 )::
       out OCR0B, Working
       out OCR0A, TOS
       ret
+
+
+Analog Input
+~~~~~~~~~~~~
+
+For now just from the trimpot onboard::
+
+    READ_TRIMPOT:
+      .dw M1_REVERSE
+      .db 7, "trimpot"
+    READ_TRIMPOT_PFA:
+
+Set the status register::
+
+      ldi Working, 0b10000111
+      sts ADCSRA, Working
+
+Set the ADMUX register. The lower nibble selects the analog source (7
+corresponds to ADC7 which, on the Pololu Baby Orangutan, is tied to the
+trimpot. Use AVcc as reference. Set ADLAR to 1 to select 8-bit (rather
+than 10-bit) conversion::
+
+      ldi Working, 0b01100111
+      sts ADMUX, Working
+
+Start conversion::
+
+      ldi Working, 0b10000111 | (1 << ADSC)
+      sts ADCSRA, Working
+
+Loop until the conversion is complete::
+
+    _anindone:
+      lds Working, ADCSRA
+      sbrc Working, ADSC
+      rjmp _anindone
+
+Read result into TOS::
+
+      rcall DUP_PFA
+      lds TOS, ADCH
+      ret
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

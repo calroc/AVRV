@@ -363,8 +363,8 @@ FIND_PFA:
 
 mov word_counter, TOS
 st Y+, TOSL
-ldi TOSL, low(M1_REVERSE)
-ldi TOS, high(M1_REVERSE)
+ldi TOSL, low(READ_TRIMPOT)
+ldi TOS, high(READ_TRIMPOT)
 
 _look_up_word:
   cpi TOSL, 0x00
@@ -521,3 +521,26 @@ M1_REVERSE_PFA:
   out OCR0B, Working
   out OCR0A, TOS
   ret
+
+READ_TRIMPOT:
+  .dw M1_REVERSE
+  .db 7, "trimpot"
+READ_TRIMPOT_PFA:
+
+ldi Working, 0b10000111
+sts ADCSRA, Working
+
+ldi Working, 0b01100111
+sts ADMUX, Working
+
+ldi Working, 0b10000111 | (1 << ADSC)
+sts ADCSRA, Working
+
+_anindone:
+  lds Working, ADCSRA
+  sbrc Working, ADSC
+  rjmp _anindone
+
+rcall DUP_PFA
+lds TOS, ADCH
+ret

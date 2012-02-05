@@ -702,8 +702,8 @@ FIND_PFA:
 <pre class="literal-block">
 mov word_counter, TOS
 st Y+, TOSL
-ldi TOSL, low(M1_REVERSE)
-ldi TOS, high(M1_REVERSE)
+ldi TOSL, low(READ_TRIMPOT)
+ldi TOS, high(READ_TRIMPOT)
 </pre>
 <p>Check if TOS:TOSL == 0x0000:</p>
 <pre class="literal-block">
@@ -947,7 +947,7 @@ PB4_OUT_PFA:
 <pre class="literal-block">
 sbi DDRB, DDB4
 </pre>
-<p>Turn the port bit off:</p>
+<p>Turn the port bit on:</p>
 <pre class="literal-block">
 sbi PORTB, PORTB4
 ret
@@ -1000,6 +1000,47 @@ M1_REVERSE_PFA:
   out OCR0B, Working
   out OCR0A, TOS
   ret
+</pre>
+</div>
+<div class="section" id="analog-input">
+<h2>Analog Input</h2>
+<p>For now just from the trimpot onboard:</p>
+<pre class="literal-block">
+READ_TRIMPOT:
+  .dw M1_REVERSE
+  .db 7, &quot;trimpot&quot;
+READ_TRIMPOT_PFA:
+</pre>
+<p>Set the status register:</p>
+<pre class="literal-block">
+ldi Working, 0b10000111
+sts ADCSRA, Working
+</pre>
+<p>Set the ADMUX register. The lower nibble selects the analog source (7
+corresponds to ADC7 which, on the Pololu Baby Orangutan, is tied to the
+trimpot. Use AVcc as reference. Set ADLAR to 1 to select 8-bit (rather
+than 10-bit) conversion:</p>
+<pre class="literal-block">
+ldi Working, 0b01100111
+sts ADMUX, Working
+</pre>
+<p>Start conversion:</p>
+<pre class="literal-block">
+ldi Working, 0b10000111 | (1 &lt;&lt; ADSC)
+sts ADCSRA, Working
+</pre>
+<p>Loop until the conversion is complete:</p>
+<pre class="literal-block">
+_anindone:
+  lds Working, ADCSRA
+  sbrc Working, ADSC
+  rjmp _anindone
+</pre>
+<p>Read result into TOS:</p>
+<pre class="literal-block">
+rcall DUP_PFA
+lds TOS, ADCH
+ret
 </pre>
 </div>
 </div>
