@@ -702,8 +702,8 @@ FIND_PFA:
 <pre class="literal-block">
 mov word_counter, TOS
 st Y+, TOSL
-ldi TOSL, low(READ_TRIMPOT)
-ldi TOS, high(READ_TRIMPOT)
+ldi TOSL, low(READ_MAGNETOMETER)
+ldi TOS, high(READ_MAGNETOMETER)
 </pre>
 <p>Check if TOS:TOSL == 0x0000:</p>
 <pre class="literal-block">
@@ -1004,12 +1004,12 @@ M1_REVERSE_PFA:
 </div>
 <div class="section" id="analog-input">
 <h2>Analog Input</h2>
-<p>For now just from the trimpot onboard:</p>
+<p>Read any of the first eight analog inputs (see Datasheet):</p>
 <pre class="literal-block">
-READ_TRIMPOT:
+READ_ANALOG:
   .dw M1_REVERSE
-  .db 7, &quot;trimpot&quot;
-READ_TRIMPOT_PFA:
+  .db 7, &quot;analog&gt;&quot;
+READ_ANALOG_PFA:
 </pre>
 <p>Set the status register:</p>
 <pre class="literal-block">
@@ -1021,7 +1021,9 @@ corresponds to ADC7 which, on the Pololu Baby Orangutan, is tied to the
 trimpot. Use AVcc as reference. Set ADLAR to 1 to select 8-bit (rather
 than 10-bit) conversion:</p>
 <pre class="literal-block">
-ldi Working, 0b01100111
+andi TOS, 0b00000111 ; mask to the first eight analog sources
+ldi Working, 0b01100000
+or Working, TOS
 sts ADMUX, Working
 </pre>
 <p>Start conversion:</p>
@@ -1038,8 +1040,246 @@ _anindone:
 </pre>
 <p>Read result into TOS:</p>
 <pre class="literal-block">
-rcall DUP_PFA
 lds TOS, ADCH
+ret
+</pre>
+</div>
+<div class="section" id="i2c-two-wire-interface">
+<h2>I2C (Two-Wire) Interface</h2>
+<p>Drive the TWI subsystem (to talk to the IMU):</p>
+<pre class="literal-block">
+.EQU TWI_START = 0x08
+.EQU TWI_RSTART = 0x10
+.EQU TWI_SLA_ACK = 0x18
+.EQU TWI_DATA_ACK = 0x28
+.EQU TWI_SLAR_ACK = 0x40
+
+.EQU MAG_ADDRESS = 0b0011110 &lt;&lt; 1 ; shift to make room for R/W bit
+.EQU MR_REG_M = 0x02
+
+INIT_MAGNETOMETER:
+  .dw READ_ANALOG
+  .db 7, &quot;initmag&quot;
+INIT_MAGNETOMETER_PFA:
+
+  ldi Working, 23
+  sts TWBR, Working ; set bitrate
+  ldi Working, 1
+  sts TWSR, Working ; set prescaler
+</pre>
+<p>Send START:</p>
+<pre class="literal-block">
+ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWSTA)|(1 &lt;&lt; TWEN)
+sts TWCR, Working
+rcall _twinty
+</pre>
+<p>Check TWSR status:</p>
+<pre class="literal-block">
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_START
+brne _twohno
+</pre>
+<p>Load Magnetometer address into TWDR and send it:</p>
+<pre class="literal-block">
+ldi Working, MAG_ADDRESS
+sts TWDR, Working
+ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWEN)
+sts TWCR, Working
+rcall _twinty
+</pre>
+<p>Check TWSR status:</p>
+<pre class="literal-block">
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_SLA_ACK
+brne _twohno
+</pre>
+<p>Write register sub-address:</p>
+<pre class="literal-block">
+ldi Working, MR_REG_M
+sts TWDR, Working
+ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWEN)
+sts TWCR, Working
+rcall _twinty
+</pre>
+<p>Check TWSR status:</p>
+<pre class="literal-block">
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_DATA_ACK
+brne _twohno
+</pre>
+<p>Write Mode:</p>
+<pre class="literal-block">
+ldi Working, 0x00
+sts TWDR, Working
+ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWEN)
+sts TWCR, Working
+rcall _twinty
+</pre>
+<p>Check TWSR status:</p>
+<pre class="literal-block">
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_DATA_ACK
+brne _twohno
+</pre>
+<p>Send STOP:</p>
+<pre class="literal-block">
+ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWEN)|(1 &lt;&lt; TWSTO)
+sts TWCR, Working
+ret
+</pre>
+<p>Wait on TWINT:</p>
+<pre class="literal-block">
+_twinty:
+  lds Working, TWCR
+  sbrs Working, TWINT
+  rjmp _twinty
+  ret
+</pre>
+<p>Some sort of error:</p>
+<pre class="literal-block">
+_twohno:
+  rcall DUP_PFA
+  ldi TOS, '!'
+  rcall EMIT_PFA
+  ret
+</pre>
+<p>We also want to be able to read the magnetometer:</p>
+<pre class="literal-block">
+READ_MAGNETOMETER:
+  .dw INIT_MAGNETOMETER
+  .db 4, &quot;rmag&quot;
+READ_MAGNETOMETER_PFA:
+</pre>
+<p>Send START:</p>
+<pre class="literal-block">
+ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWSTA)|(1 &lt;&lt; TWEN)
+sts TWCR, Working
+rcall _twinty
+</pre>
+<p>Check TWSR status:</p>
+<pre class="literal-block">
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_START
+brne _twohno
+</pre>
+<p>Load Magnetometer address into TWDR and send it:</p>
+<pre class="literal-block">
+ldi Working, MAG_ADDRESS
+sts TWDR, Working
+ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWEN)
+sts TWCR, Working
+rcall _twinty
+</pre>
+<p>Check TWSR status:</p>
+<pre class="literal-block">
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_SLA_ACK
+brne _twohno
+</pre>
+<p>Write register sub-address:</p>
+<pre class="literal-block">
+ldi Working, 0x03 | 0b10000000 ; first data byte | auto-increment
+sts TWDR, Working
+ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWEN)
+sts TWCR, Working
+rcall _twinty
+</pre>
+<p>Check TWSR status:</p>
+<pre class="literal-block">
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_DATA_ACK
+brne _twohno
+</pre>
+<p>Send REPEATED START:</p>
+<pre class="literal-block">
+ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWSTA)|(1 &lt;&lt; TWEN)
+sts TWCR, Working
+rcall _twinty
+</pre>
+<p>Check TWSR status:</p>
+<pre class="literal-block">
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_RSTART
+brne _twohno
+</pre>
+<p>Load Magnetometer address with read bit into TWDR and send it:</p>
+<pre class="literal-block">
+ldi Working, (MAG_ADDRESS | 1)
+sts TWDR, Working
+ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWEN)
+sts TWCR, Working
+rcall _twinty
+</pre>
+<p>Check TWSR status:</p>
+<pre class="literal-block">
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_SLAR_ACK
+brne _twohno
+</pre>
+<p>Read data?:</p>
+<pre class="literal-block">
+; 1
+  ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWEA)|(1 &lt;&lt; TWEN)
+  sts TWCR, Working
+  rcall _twinty
+  lds Working, TWDR
+  rcall DUP_PFA
+  mov TOS, Working
+; 2
+  ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWEA)|(1 &lt;&lt; TWEN)
+  sts TWCR, Working
+  rcall _twinty
+  lds Working, TWDR
+  rcall DUP_PFA
+  mov TOS, Working
+; 3
+  ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWEA)|(1 &lt;&lt; TWEN)
+  sts TWCR, Working
+  rcall _twinty
+  lds Working, TWDR
+  rcall DUP_PFA
+  mov TOS, Working
+; 4
+  ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWEA)|(1 &lt;&lt; TWEN)
+  sts TWCR, Working
+  rcall _twinty
+  lds Working, TWDR
+  rcall DUP_PFA
+  mov TOS, Working
+; 5
+  ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWEA)|(1 &lt;&lt; TWEN)
+  sts TWCR, Working
+  rcall _twinty
+  lds Working, TWDR
+  rcall DUP_PFA
+  mov TOS, Working
+; 6
+  ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWEA)|(1 &lt;&lt; TWEN)
+  sts TWCR, Working
+  rcall _twinty
+  lds Working, TWDR
+  rcall DUP_PFA
+  mov TOS, Working
+</pre>
+<p>Send NACK:</p>
+<pre class="literal-block">
+ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWEN)
+sts TWCR, Working
+rcall _twinty
+</pre>
+<p>Send STOP:</p>
+<pre class="literal-block">
+ldi Working, (1 &lt;&lt; TWINT)|(1 &lt;&lt; TWEN)|(1 &lt;&lt; TWSTO)
+sts TWCR, Working
 ret
 </pre>
 </div>

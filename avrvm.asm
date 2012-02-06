@@ -363,8 +363,8 @@ FIND_PFA:
 
 mov word_counter, TOS
 st Y+, TOSL
-ldi TOSL, low(READ_TRIMPOT)
-ldi TOS, high(READ_TRIMPOT)
+ldi TOSL, low(READ_MAGNETOMETER)
+ldi TOS, high(READ_MAGNETOMETER)
 
 _look_up_word:
   cpi TOSL, 0x00
@@ -522,15 +522,17 @@ M1_REVERSE_PFA:
   out OCR0A, TOS
   ret
 
-READ_TRIMPOT:
+READ_ANALOG:
   .dw M1_REVERSE
-  .db 7, "trimpot"
-READ_TRIMPOT_PFA:
+  .db 7, "analog>"
+READ_ANALOG_PFA:
 
 ldi Working, 0b10000111
 sts ADCSRA, Working
 
-ldi Working, 0b01100111
+andi TOS, 0b00000111 ; mask to the first eight analog sources
+ldi Working, 0b01100000
+or Working, TOS
 sts ADMUX, Working
 
 ldi Working, 0b10000111 | (1 << ADSC)
@@ -541,6 +543,189 @@ _anindone:
   sbrc Working, ADSC
   rjmp _anindone
 
-rcall DUP_PFA
 lds TOS, ADCH
+ret
+
+.EQU TWI_START = 0x08
+.EQU TWI_RSTART = 0x10
+.EQU TWI_SLA_ACK = 0x18
+.EQU TWI_DATA_ACK = 0x28
+.EQU TWI_SLAR_ACK = 0x40
+
+.EQU MAG_ADDRESS = 0b0011110 << 1 ; shift to make room for R/W bit
+.EQU MR_REG_M = 0x02
+
+INIT_MAGNETOMETER:
+  .dw READ_ANALOG
+  .db 7, "initmag"
+INIT_MAGNETOMETER_PFA:
+
+  ldi Working, 23
+  sts TWBR, Working ; set bitrate
+  ldi Working, 1
+  sts TWSR, Working ; set prescaler
+
+ldi Working, (1 << TWINT)|(1 << TWSTA)|(1 << TWEN)
+sts TWCR, Working
+rcall _twinty
+
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_START
+brne _twohno
+
+ldi Working, MAG_ADDRESS
+sts TWDR, Working
+ldi Working, (1 << TWINT)|(1 << TWEN)
+sts TWCR, Working
+rcall _twinty
+
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_SLA_ACK
+brne _twohno
+
+ldi Working, MR_REG_M
+sts TWDR, Working
+ldi Working, (1 << TWINT)|(1 << TWEN)
+sts TWCR, Working
+rcall _twinty
+
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_DATA_ACK
+brne _twohno
+
+ldi Working, 0x00
+sts TWDR, Working
+ldi Working, (1 << TWINT)|(1 << TWEN)
+sts TWCR, Working
+rcall _twinty
+
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_DATA_ACK
+brne _twohno
+
+ldi Working, (1 << TWINT)|(1 << TWEN)|(1 << TWSTO)
+sts TWCR, Working
+ret
+
+_twinty:
+  lds Working, TWCR
+  sbrs Working, TWINT
+  rjmp _twinty
+  ret
+
+_twohno:
+  rcall DUP_PFA
+  ldi TOS, '!'
+  rcall EMIT_PFA
+  ret
+
+READ_MAGNETOMETER:
+  .dw INIT_MAGNETOMETER
+  .db 4, "rmag"
+READ_MAGNETOMETER_PFA:
+
+ldi Working, (1 << TWINT)|(1 << TWSTA)|(1 << TWEN)
+sts TWCR, Working
+rcall _twinty
+
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_START
+brne _twohno
+
+ldi Working, MAG_ADDRESS
+sts TWDR, Working
+ldi Working, (1 << TWINT)|(1 << TWEN)
+sts TWCR, Working
+rcall _twinty
+
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_SLA_ACK
+brne _twohno
+
+ldi Working, 0x03 | 0b10000000 ; first data byte | auto-increment
+sts TWDR, Working
+ldi Working, (1 << TWINT)|(1 << TWEN)
+sts TWCR, Working
+rcall _twinty
+
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_DATA_ACK
+brne _twohno
+
+ldi Working, (1 << TWINT)|(1 << TWSTA)|(1 << TWEN)
+sts TWCR, Working
+rcall _twinty
+
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_RSTART
+brne _twohno
+
+ldi Working, (MAG_ADDRESS | 1)
+sts TWDR, Working
+ldi Working, (1 << TWINT)|(1 << TWEN)
+sts TWCR, Working
+rcall _twinty
+
+lds Working, TWSR
+andi Working, 0b11111000 ; mask non-status bytes
+cpi Working, TWI_SLAR_ACK
+brne _twohno
+
+; 1
+  ldi Working, (1 << TWINT)|(1 << TWEA)|(1 << TWEN)
+  sts TWCR, Working
+  rcall _twinty
+  lds Working, TWDR
+  rcall DUP_PFA
+  mov TOS, Working
+; 2
+  ldi Working, (1 << TWINT)|(1 << TWEA)|(1 << TWEN)
+  sts TWCR, Working
+  rcall _twinty
+  lds Working, TWDR
+  rcall DUP_PFA
+  mov TOS, Working
+; 3
+  ldi Working, (1 << TWINT)|(1 << TWEA)|(1 << TWEN)
+  sts TWCR, Working
+  rcall _twinty
+  lds Working, TWDR
+  rcall DUP_PFA
+  mov TOS, Working
+; 4
+  ldi Working, (1 << TWINT)|(1 << TWEA)|(1 << TWEN)
+  sts TWCR, Working
+  rcall _twinty
+  lds Working, TWDR
+  rcall DUP_PFA
+  mov TOS, Working
+; 5
+  ldi Working, (1 << TWINT)|(1 << TWEA)|(1 << TWEN)
+  sts TWCR, Working
+  rcall _twinty
+  lds Working, TWDR
+  rcall DUP_PFA
+  mov TOS, Working
+; 6
+  ldi Working, (1 << TWINT)|(1 << TWEA)|(1 << TWEN)
+  sts TWCR, Working
+  rcall _twinty
+  lds Working, TWDR
+  rcall DUP_PFA
+  mov TOS, Working
+
+ldi Working, (1 << TWINT)|(1 << TWEN)
+sts TWCR, Working
+rcall _twinty
+
+ldi Working, (1 << TWINT)|(1 << TWEN)|(1 << TWSTO)
+sts TWCR, Working
 ret
