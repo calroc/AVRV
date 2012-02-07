@@ -238,6 +238,13 @@ Set the UART to talk to a serial port::
 
   rcall UART_INIT
 
+Set up 100kHz freq for TWI/I2C peripheral::
+
+  ldi Working, 23
+  sts TWBR, Working ; set bitrate
+  ldi Working, 1
+  sts TWSR, Working ; set prescaler
+
 Initialize Base::
 
   ldi Working, 10
@@ -1106,11 +1113,6 @@ Drive the TWI subsystem (to talk to the IMU)::
       .dw READ_ANALOG
       .db 7, "initmag"
     INIT_MAGNETOMETER_PFA:
-    
-      ldi Working, 23
-      sts TWBR, Working ; set bitrate
-      ldi Working, 1
-      sts TWSR, Working ; set prescaler
 
 Send START::
 
