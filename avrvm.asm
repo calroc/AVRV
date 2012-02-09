@@ -370,8 +370,8 @@ FIND_PFA:
 
 mov word_counter, TOS
 st Y+, TOSL
-ldi TOSL, low(NREAD_MAGNETOMETER)
-ldi TOS, high(NREAD_MAGNETOMETER)
+ldi TOSL, low(READ_ACCELEROMETER)
+ldi TOS, high(READ_ACCELEROMETER)
 
 _look_up_word:
   cpi TOSL, 0x00
@@ -564,6 +564,12 @@ ret
 .EQU MAG_ADDRESS = 0b0011110 << 1 ; shift to make room for R/W bit
 .EQU MR_REG_M = 0x02
 
+.EQU ACCEL_ADDRESS = 0b0011000 << 1 ; shift to make room for R/W bit
+.EQU CTRL_REG1_A = 0x20 ; set to 0b00100111 see datasheet
+.EQU CTRL_REG4_A = 0x23 ; set to 0b10000000 see datasheet
+
+
+
 INIT_MAGNETOMETER:
   .dw READ_ANALOG
   .db 7, "initmag"
@@ -746,27 +752,18 @@ SET_MAGNETOMETER_MODE_PFA:
 
     ldi twi, 0x00
 
-    rcall Send_START
-    rcall _twinty
-    rcall FETCH_TWSR
-    rcall EXPECT_TWI_START
+    rcall TWI_START_it
 
     ldi Working, MAG_ADDRESS ; Magnetometer Address
-    rcall SEND_BYTE_TWI
+    rcall Send_BYTE
     rcall _twinty
     rcall AFTER_SLA_W
 
     ldi Working, MR_REG_M ; Subaddress
-    rcall SEND_BYTE_TWI
-    rcall _twinty
-    rcall FETCH_TWSR
-    rcall EXPECT_TWI_DATA_ACK
+    rcall TWI_SEND_BYTE
 
     ldi Working, 0x00 ; Write Mode
-    rcall SEND_BYTE_TWI
-    rcall _twinty
-    rcall FETCH_TWSR
-    rcall EXPECT_TWI_DATA_ACK
+    rcall TWI_SEND_BYTE
 
     rcall Send_STOP
     ret
@@ -779,68 +776,39 @@ NREAD_MAGNETOMETER_PFA:
 
     ldi twi, 0x00
 
-    rcall Send_START
-    rcall _twinty
-    rcall FETCH_TWSR
-    rcall EXPECT_TWI_START
+    rcall TWI_START_it
 
     ldi Working, MAG_ADDRESS ; Magnetometer Address
-    rcall SEND_BYTE_TWI
+    rcall Send_BYTE
     rcall _twinty
     rcall AFTER_SLA_W
 
     ldi Working, 0x03 | 0b10000000 ; first data byte | auto-increment
-    rcall SEND_BYTE_TWI
-    rcall _twinty
-    rcall FETCH_TWSR
-    rcall EXPECT_TWI_DATA_ACK
+    rcall TWI_SEND_BYTE
 
-    rcall Send_START ; Repeated Start
-    rcall _twinty
-    rcall FETCH_TWSR
-    rcall EXPECT_TWI_RSTART ; Repeated Start
+    rcall TWI_RSTART_it ; Repeated Start
 
     ldi Working, (MAG_ADDRESS | 1) ; Load Magnetometer Address with read bit
-    rcall SEND_BYTE_TWI
+    rcall Send_BYTE
     rcall _twinty
     rcall FETCH_TWSR
     rcall EXPECT_TWI_SLAR_ACK ; SLA+R
 
-    ; 1
-    rcall ENABLE_ACK_TWI
-    rcall _twinty
-    rcall Receive_BYTE_TWI
-
-    ; 2
-    rcall ENABLE_ACK_TWI
-    rcall _twinty
-    rcall Receive_BYTE_TWI
-
-    ; 3
-    rcall ENABLE_ACK_TWI
-    rcall _twinty
-    rcall Receive_BYTE_TWI
-
-    ; 4
-    rcall ENABLE_ACK_TWI
-    rcall _twinty
-    rcall Receive_BYTE_TWI
-
-    ; 5
-    rcall ENABLE_ACK_TWI
-    rcall _twinty
-    rcall Receive_BYTE_TWI
-
-    ; 6
-    rcall ENABLE_ACK_TWI
-    rcall _twinty
-    rcall Receive_BYTE_TWI
+    rcall TWI_RECV_BYTE
+    rcall TWI_RECV_BYTE
+    rcall TWI_RECV_BYTE
+    rcall TWI_RECV_BYTE
+    rcall TWI_RECV_BYTE
+    rcall TWI_RECV_BYTE
 
     rcall Send_NACK
     rcall _twinty
 
     rcall Send_STOP
     ret
+
+
+
 
   AFTER_SLA_W:
     rcall FETCH_TWSR
@@ -865,9 +833,8 @@ NREAD_MAGNETOMETER_PFA:
       sts TWCR, Working
       ret
 
-    SEND_BYTE_TWI:
+    Send_BYTE:
       check_twi
-    _send_byte_twi:
       sts TWDR, Working
       ldi Working, (1 << TWINT)|(1 << TWEN)
       sts TWCR, Working
@@ -952,3 +919,95 @@ NREAD_MAGNETOMETER_PFA:
     _twi_false:
       ldi twi, 1
       ret
+
+
+  _twi_start:
+    rcall Send_START
+    rcall _twinty
+    rcall FETCH_TWSR
+    ret
+
+  TWI_START_it:
+    rcall _twi_start
+    rcall EXPECT_TWI_START
+    ret
+
+  TWI_RSTART_it:
+    rcall _twi_start
+    rcall EXPECT_TWI_RSTART
+    ret
+
+  TWI_RECV_BYTE:
+    rcall ENABLE_ACK_TWI
+    rcall _twinty
+    rcall Receive_BYTE_TWI
+    ret
+
+  TWI_SEND_BYTE:
+    rcall Send_BYTE
+    rcall _twinty
+    rcall FETCH_TWSR
+    rcall EXPECT_TWI_DATA_ACK
+    ret
+
+SET_ACCELEROMETER_MODE:
+  .dw SET_MAGNETOMETER_MODE
+  .db 4, "IACC"
+SET_ACCELEROMETER_MODE_PFA:
+
+    ldi twi, 0x00
+
+    rcall TWI_START_it
+
+    ldi Working, ACCEL_ADDRESS
+    rcall Send_BYTE
+    rcall _twinty
+    rcall AFTER_SLA_W
+
+    ldi Working, CTRL_REG1_A ; Subaddress
+    rcall TWI_SEND_BYTE
+
+    ldi Working, 0b00100111 ; Write Value
+    rcall TWI_SEND_BYTE
+
+    rcall Send_STOP
+    ret
+
+
+READ_ACCELEROMETER:
+  .dw SET_ACCELEROMETER_MODE
+  .db 4, "RACC"
+READ_ACCELEROMETER_PFA:
+
+    ldi twi, 0x00
+
+    rcall TWI_START_it
+
+    ldi Working, ACCEL_ADDRESS
+    rcall Send_BYTE
+    rcall _twinty
+    rcall AFTER_SLA_W
+
+    ldi Working, 0x28 | 0b10000000 ; first data byte | auto-increment
+    rcall TWI_SEND_BYTE
+
+    rcall TWI_RSTART_it ; Repeated Start
+
+    ldi Working, (ACCEL_ADDRESS | 1) ; address with read bit
+    rcall Send_BYTE
+    rcall _twinty
+    rcall FETCH_TWSR
+    rcall EXPECT_TWI_SLAR_ACK ; SLA+R
+
+    rcall TWI_RECV_BYTE
+    rcall TWI_RECV_BYTE
+    rcall TWI_RECV_BYTE
+    rcall TWI_RECV_BYTE
+    rcall TWI_RECV_BYTE
+    rcall TWI_RECV_BYTE
+
+    rcall Send_NACK
+    rcall _twinty
+
+    rcall Send_STOP
+    ret
