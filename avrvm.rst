@@ -730,8 +730,8 @@ Make room on the stack for address::
 
       mov word_counter, TOS
       st Y+, TOSL
-      ldi TOSL, low(READ_ACCELEROMETER)
-      ldi TOS, high(READ_ACCELEROMETER)
+      ldi TOSL, low(READ_IMU)
+      ldi TOS, high(READ_IMU)
 
 Check if TOS:TOSL == 0x0000::
 
@@ -1119,80 +1119,8 @@ Drive the TWI subsystem (to talk to the IMU)::
     .EQU CTRL_REG1_A = 0x20 ; set to 0b00100111 see datasheet
     .EQU CTRL_REG4_A = 0x23 ; set to 0b10000000 see datasheet
 
-
-
-    INIT_MAGNETOMETER:
-      .dw READ_ANALOG
-      .db 7, "initmag"
-    INIT_MAGNETOMETER_PFA:
-
-Send START::
-
-      ldi Working, (1 << TWINT)|(1 << TWSTA)|(1 << TWEN)
-      sts TWCR, Working
-      rcall _twinty
-
-Check TWSR status::
-
-      lds Working, TWSR
-      andi Working, 0b11111000 ; mask non-status bytes
-      cpi Working, TWI_START
-      brne _twohno
-
-
-Load Magnetometer address into TWDR and send it::
-
-      ldi Working, MAG_ADDRESS
-      sts TWDR, Working
-      ldi Working, (1 << TWINT)|(1 << TWEN)
-      sts TWCR, Working
-      rcall _twinty
-
-Check TWSR status::
-
-      lds Working, TWSR
-      andi Working, 0b11111000 ; mask non-status bytes
-      cpi Working, TWI_SLA_ACK
-      brne _twohno
-
-
-Write register sub-address::
-
-      ldi Working, MR_REG_M
-      sts TWDR, Working
-      ldi Working, (1 << TWINT)|(1 << TWEN)
-      sts TWCR, Working
-      rcall _twinty
-
-Check TWSR status::
-
-      lds Working, TWSR
-      andi Working, 0b11111000 ; mask non-status bytes
-      cpi Working, TWI_DATA_ACK
-      brne _twohno
-
-
-Write Mode::
-
-      ldi Working, 0x00
-      sts TWDR, Working
-      ldi Working, (1 << TWINT)|(1 << TWEN)
-      sts TWCR, Working
-      rcall _twinty
-
-Check TWSR status::
-
-      lds Working, TWSR
-      andi Working, 0b11111000 ; mask non-status bytes
-      cpi Working, TWI_DATA_ACK
-      brne _twohno
-
-
-Send STOP::
-
-      ldi Working, (1 << TWINT)|(1 << TWEN)|(1 << TWSTO)
-      sts TWCR, Working
-      ret
+    .EQU GYRO_ADDRESS = 0b1101001 << 1 ; shift to make room for R/W bit
+    .EQU GYRO_CTRL_REG1 = 0x20
 
 Wait on TWINT::
 
@@ -1210,188 +1138,154 @@ Some sort of error::
       rcall EMIT_PFA
       ret
 
+Amazing new wonder style::
 
+    .MACRO check_twi
+      cpi twi, 0x00
+      brne _twi_fail
+    .ENDMACRO
 
+    AFTER_SLA_W:
+      rcall FETCH_TWSR
+      rcall EXPECT_TWI_SLA_ACK
+      rcall TWI_OR
+      rcall EXPECT_TWI_SLA_NACK
+      rcall TWI_OR
+      rcall EXPECT_TWI_ARB_LOST
+      ret
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-We also want to be able to read the magnetometer::
-
-    READ_MAGNETOMETER:
-      .dw INIT_MAGNETOMETER
-      .db 4, "rmag"
-    READ_MAGNETOMETER_PFA:
-
-
-
-Send START::
-
+    Send_START:
+      check_twi
       ldi Working, (1 << TWINT)|(1 << TWSTA)|(1 << TWEN)
       sts TWCR, Working
-      rcall _twinty
+      ret
 
-Check TWSR status::
-
-      lds Working, TWSR
-      andi Working, 0b11111000 ; mask non-status bytes
-      cpi Working, TWI_START
-      brne _twohno
-
-
-
-Load Magnetometer address into TWDR and send it::
-
-      ldi Working, MAG_ADDRESS
-      sts TWDR, Working
-      ldi Working, (1 << TWINT)|(1 << TWEN)
-      sts TWCR, Working
-      rcall _twinty
-
-Check TWSR status::
-
-      lds Working, TWSR
-      andi Working, 0b11111000 ; mask non-status bytes
-      cpi Working, TWI_SLA_ACK
-      brne _twohno
-
-
-
-Write register sub-address::
-
-      ldi Working, 0x03 | 0b10000000 ; first data byte | auto-increment
-      sts TWDR, Working
-      ldi Working, (1 << TWINT)|(1 << TWEN)
-      sts TWCR, Working
-      rcall _twinty
-
-Check TWSR status::
-
-      lds Working, TWSR
-      andi Working, 0b11111000 ; mask non-status bytes
-      cpi Working, TWI_DATA_ACK
-      brne _twohno
-
-
-
-
-Send REPEATED START::
-
-      ldi Working, (1 << TWINT)|(1 << TWSTA)|(1 << TWEN)
-      sts TWCR, Working
-      rcall _twinty
-
-Check TWSR status::
-
-      lds Working, TWSR
-      andi Working, 0b11111000 ; mask non-status bytes
-      cpi Working, TWI_RSTART
-      brne _twohno
-
-
-
-
-
-Load Magnetometer address with read bit into TWDR and send it::
-
-      ldi Working, (MAG_ADDRESS | 1)
-      sts TWDR, Working
-      ldi Working, (1 << TWINT)|(1 << TWEN)
-      sts TWCR, Working
-      rcall _twinty
-
-Check TWSR status::
-
-      lds Working, TWSR
-      andi Working, 0b11111000 ; mask non-status bytes
-      cpi Working, TWI_SLAR_ACK
-      brne _twohno
-
-
-
-
-Read data?::
-
-    ; 1
-      ldi Working, (1 << TWINT)|(1 << TWEA)|(1 << TWEN)
-      sts TWCR, Working
-      rcall _twinty
-      rcall DUP_PFA
-      lds TOS, TWDR
-    ; 2
-      ldi Working, (1 << TWINT)|(1 << TWEA)|(1 << TWEN)
-      sts TWCR, Working
-      rcall _twinty
-      lds Working, TWDR
-      rcall DUP_PFA
-      mov TOS, Working
-    ; 3
-      ldi Working, (1 << TWINT)|(1 << TWEA)|(1 << TWEN)
-      sts TWCR, Working
-      rcall _twinty
-      lds Working, TWDR
-      rcall DUP_PFA
-      mov TOS, Working
-    ; 4
-      ldi Working, (1 << TWINT)|(1 << TWEA)|(1 << TWEN)
-      sts TWCR, Working
-      rcall _twinty
-      lds Working, TWDR
-      rcall DUP_PFA
-      mov TOS, Working
-    ; 5
-      ldi Working, (1 << TWINT)|(1 << TWEA)|(1 << TWEN)
-      sts TWCR, Working
-      rcall _twinty
-      lds Working, TWDR
-      rcall DUP_PFA
-      mov TOS, Working
-    ; 6
-      ldi Working, (1 << TWINT)|(1 << TWEA)|(1 << TWEN)
-      sts TWCR, Working
-      rcall _twinty
-      lds Working, TWDR
-      rcall DUP_PFA
-      mov TOS, Working
-
-Send NACK::
-
-      ldi Working, (1 << TWINT)|(1 << TWEN)
-      sts TWCR, Working
-      rcall _twinty
-
-Send STOP::
-
+    Send_STOP:
+      check_twi
       ldi Working, (1 << TWINT)|(1 << TWEN)|(1 << TWSTO)
       sts TWCR, Working
       ret
 
+    Send_BYTE:
+      check_twi
+      sts TWDR, Working
+      ldi Working, (1 << TWINT)|(1 << TWEN)
+      sts TWCR, Working
+      ret
 
-Amazing new wonder style::
-    
+    ENABLE_ACK_TWI: ; Needed to receive bytes
+      ldi Working, (1 << TWINT)|(1 << TWEA)|(1 << TWEN)
+      sts TWCR, Working
+      ret
 
-    .MACRO check_twi
-          cpi twi, 0x00
-          brne _twi_fail
-    .ENDMACRO
+    Receive_BYTE_TWI:
+      rcall DUP_PFA
+      lds TOS, TWDR
+      ret
 
+    Send_NACK:
+      ldi Working, (1 << TWINT)|(1 << TWEN)
+      sts TWCR, Working
+      ret
+
+    FETCH_TWSR:
+      lds Working, TWSR
+      andi Working, 0b11111000 ; mask non-status bytes
+      ret
+
+    TWI_OR:
+      cpi twi, 0x00  ; if success
+      breq _twi_fail ; exit the calling routine
+      ldi twi, 0     ; otherwise continue
+      ret
+    _twi_fail:
+      pop Working
+      pop Working ; remove caller's return location from the return stack
+      ret
+
+    EXPECT_TWI_START:
+      check_twi
+      cpi Working, TWI_START
+      brne _twi_false
+      ret
+
+    EXPECT_TWI_RSTART:
+      check_twi
+      cpi Working, TWI_RSTART
+      brne _twi_false
+      ret
+
+    EXPECT_TWI_SLA_ACK:
+      check_twi
+      cpi Working, TWI_SLA_ACK
+      brne _twi_false
+      ret
+
+    EXPECT_TWI_DATA_ACK:
+      check_twi
+      cpi Working, TWI_DATA_ACK
+      brne _twi_false
+      ret
+
+    EXPECT_TWI_SLA_NACK:
+      check_twi
+      cpi Working, TWI_SLA_NACK
+      brne _twi_false
+      ; this is a fail
+      ldi twi, TWI_SLA_NACK ; mark failure
+      rjmp _twi_fail ; exit caller
+
+    EXPECT_TWI_SLAR_ACK:
+      check_twi
+      cpi Working, TWI_SLAR_ACK
+      brne _twi_false
+      ret
+
+    EXPECT_TWI_ARB_LOST:
+      check_twi
+      cpi Working, TWI_ARB_LOST
+      brne _twi_false
+      ; this is a fail
+      ldi twi, TWI_ARB_LOST ; mark failure
+      rjmp _twi_fail ; exit caller
+
+    _twi_false:
+      ldi twi, 1
+      ret
+
+    _twi_start:
+      rcall Send_START
+      rcall _twinty
+      rcall FETCH_TWSR
+      ret
+
+    TWI_START_it:
+      rcall _twi_start
+      rcall EXPECT_TWI_START
+      ret
+
+    TWI_RSTART_it:
+      rcall _twi_start
+      rcall EXPECT_TWI_RSTART
+      ret
+
+    TWI_RECV_BYTE:
+      rcall ENABLE_ACK_TWI
+      rcall _twinty
+      rcall Receive_BYTE_TWI
+      ret
+
+    TWI_SEND_BYTE:
+      rcall Send_BYTE
+      rcall _twinty
+      rcall FETCH_TWSR
+      rcall EXPECT_TWI_DATA_ACK
+      ret
+
+Let's talk to the Magnetometer::
 
     SET_MAGNETOMETER_MODE:
-      .dw READ_MAGNETOMETER
+      .dw READ_ANALOG
       .db 4, "IMAG"
     SET_MAGNETOMETER_MODE_PFA:
 
@@ -1414,10 +1308,10 @@ Amazing new wonder style::
         ret
 
 
-    NREAD_MAGNETOMETER:
+    READ_MAGNETOMETER:
       .dw SET_MAGNETOMETER_MODE
       .db 4, "RMAG"
-    NREAD_MAGNETOMETER_PFA:
+    READ_MAGNETOMETER_PFA:
 
         ldi twi, 0x00
 
@@ -1451,149 +1345,6 @@ Amazing new wonder style::
 
         rcall Send_STOP
         ret   
-
-
-
-
-      AFTER_SLA_W:
-        rcall FETCH_TWSR
-        rcall EXPECT_TWI_SLA_ACK
-        rcall TWI_OR
-        rcall EXPECT_TWI_SLA_NACK
-        rcall TWI_OR
-        rcall EXPECT_TWI_ARB_LOST
-        ret
-
-
-
-        Send_START:
-          check_twi
-          ldi Working, (1 << TWINT)|(1 << TWSTA)|(1 << TWEN)
-          sts TWCR, Working
-          ret
-
-        Send_STOP:
-          check_twi
-          ldi Working, (1 << TWINT)|(1 << TWEN)|(1 << TWSTO)
-          sts TWCR, Working
-          ret
-
-        Send_BYTE:
-          check_twi
-          sts TWDR, Working
-          ldi Working, (1 << TWINT)|(1 << TWEN)
-          sts TWCR, Working
-          ret
-
-        ENABLE_ACK_TWI: ; Needed to receive bytes
-          ldi Working, (1 << TWINT)|(1 << TWEA)|(1 << TWEN)
-          sts TWCR, Working
-          ret
-
-        Receive_BYTE_TWI:
-          rcall DUP_PFA
-          lds TOS, TWDR
-          ret
-
-        Send_NACK:
-          ldi Working, (1 << TWINT)|(1 << TWEN)
-          sts TWCR, Working
-          ret
-
-        FETCH_TWSR:
-          lds Working, TWSR
-          andi Working, 0b11111000 ; mask non-status bytes
-          ret
-
-        TWI_OR:
-          cpi twi, 0x00  ; if success
-          breq _twi_fail ; exit the calling routine
-          ldi twi, 0     ; otherwise continue
-          ret
-        _twi_fail:
-          pop Working
-          pop Working ; remove caller's return location from the return stack
-          ret
-
-        EXPECT_TWI_START:
-          check_twi
-          cpi Working, TWI_START
-          brne _twi_false
-          ret
-
-        EXPECT_TWI_RSTART:
-          check_twi
-          cpi Working, TWI_RSTART
-          brne _twi_false
-          ret
-
-        EXPECT_TWI_SLA_ACK:
-          check_twi
-          cpi Working, TWI_SLA_ACK
-          brne _twi_false
-          ret
-
-        EXPECT_TWI_DATA_ACK:
-          check_twi
-          cpi Working, TWI_DATA_ACK
-          brne _twi_false
-          ret
-
-        EXPECT_TWI_SLA_NACK:
-          check_twi
-          cpi Working, TWI_SLA_NACK
-          brne _twi_false
-          ; this is a fail
-          ldi twi, TWI_SLA_NACK ; mark failure
-          rjmp _twi_fail ; exit caller
-
-        EXPECT_TWI_SLAR_ACK:
-          check_twi
-          cpi Working, TWI_SLAR_ACK
-          brne _twi_false
-          ret
-
-        EXPECT_TWI_ARB_LOST:
-          check_twi
-          cpi Working, TWI_ARB_LOST
-          brne _twi_false
-          ; this is a fail
-          ldi twi, TWI_ARB_LOST ; mark failure
-          rjmp _twi_fail ; exit caller
-
-        _twi_false:
-          ldi twi, 1
-          ret
-
-
-      _twi_start:
-        rcall Send_START
-        rcall _twinty
-        rcall FETCH_TWSR
-        ret
-
-      TWI_START_it:
-        rcall _twi_start
-        rcall EXPECT_TWI_START
-        ret
-
-      TWI_RSTART_it:
-        rcall _twi_start
-        rcall EXPECT_TWI_RSTART
-        ret
-
-      TWI_RECV_BYTE:
-        rcall ENABLE_ACK_TWI
-        rcall _twinty
-        rcall Receive_BYTE_TWI
-        ret
-
-      TWI_SEND_BYTE:
-        rcall Send_BYTE
-        rcall _twinty
-        rcall FETCH_TWSR
-        rcall EXPECT_TWI_DATA_ACK
-        ret
 
 Let's talk to the Accelerometer::
 
@@ -1658,5 +1409,93 @@ Let's talk to the Accelerometer::
 
         rcall Send_STOP
         ret   
+
+
+
+
+    SET_GYRO_MODE:
+      .dw READ_ACCELEROMETER
+      .db 5, "IGYRO"
+    SET_GYRO_MODE_PFA:
+
+        ldi twi, 0x00
+
+        rcall TWI_START_it
+
+        ldi Working, GYRO_ADDRESS
+        rcall Send_BYTE
+        rcall _twinty
+        rcall AFTER_SLA_W
+
+        ldi Working, GYRO_CTRL_REG1 ; Subaddress
+        rcall TWI_SEND_BYTE
+
+        ldi Working, 0b00001111 ; Write Value
+        rcall TWI_SEND_BYTE
+
+        rcall Send_STOP
+        ret
+
+    READ_GYRO:
+      .dw SET_GYRO_MODE
+      .db 5, "RGYRO"
+    READ_GYRO_PFA:
+
+        ldi twi, 0x00
+
+        rcall TWI_START_it
+
+        ldi Working, GYRO_ADDRESS
+        rcall Send_BYTE
+        rcall _twinty
+        rcall AFTER_SLA_W
+
+        ldi Working, 0x28 | 0b10000000 ; first data byte | auto-increment
+        rcall TWI_SEND_BYTE
+
+        rcall TWI_RSTART_it ; Repeated Start
+
+        ldi Working, (GYRO_ADDRESS | 1) ; address with read bit
+        rcall Send_BYTE
+        rcall _twinty
+        rcall FETCH_TWSR
+        rcall EXPECT_TWI_SLAR_ACK ; SLA+R
+
+        rcall TWI_RECV_BYTE
+        rcall TWI_RECV_BYTE
+        rcall TWI_RECV_BYTE
+        rcall TWI_RECV_BYTE
+        rcall TWI_RECV_BYTE
+        rcall TWI_RECV_BYTE
+
+        rcall Send_NACK
+        rcall _twinty
+
+        rcall Send_STOP
+        ret   
+
+
+    READ_IMU:
+      .dw READ_GYRO
+      .db 4, "RIMU"
+    READ_IMU_PFA:
+      rcall READ_GYRO_PFA
+      ldi word_counter, 6
+      rcall _send_imu_bytes
+
+      rcall READ_MAGNETOMETER_PFA
+      ldi word_counter, 6
+      rcall _send_imu_bytes
+
+      rcall READ_ACCELEROMETER_PFA
+      ldi word_counter, 6
+      rcall _send_imu_bytes
+      ret
+
+    _send_imu_bytes:
+      rcall EMIT_HEX_PFA
+      dec word_counter
+      brne _send_imu_bytes
+      ret
 
 
