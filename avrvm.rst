@@ -83,7 +83,7 @@ We also use a working register::
 
   .def Working = r16
 
-The "word" word needs to track how many bytes it's read. This is also
+The "word" word needs to track how many bytes it has read. This is also
 reused by find::
 
   .def word_counter = r17
@@ -916,7 +916,7 @@ Conclusion
 So that is a useful not-quite-Forth interpreter. I've burned this
 program to my Pololu Baby Orangutan and it runs. I can connect to it
 over a serial connection to pins PD0 and PD1 (I'm using the Pololu USB
-AVR programmer and it's built in USB-to-TTL-compatible serial port.)
+AVR programmer and its built in USB-to-TTL-compatible serial port.)
 
 The following thirteen words are defined above:
 
