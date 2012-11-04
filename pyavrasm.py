@@ -17,6 +17,8 @@ def update(a, b):
 
 
 ADDRESS_MAX = 2048
+LOW_BYTE = (1 << 8) - 1
+HIGH_BYTE = LOW_BYTE << 8
 
 
 def int2addr(i):
@@ -26,11 +28,38 @@ def int2addr(i):
 #: Global definitions.
 G = dict((k, int2addr(v)) for k, v in dict(
 
-    SRAM_START=0x200,
+    SRAM_START=0x100,
+    RAMEND=ADDRESS_MAX - 1,
+
+    SPL=0x12,
+    SPH=0x13,
+    YL=0x28,
+    YH=0x29,
+
+    r16=0x16,
     r26=0x26,
     r27=0x27,
 
     ).iteritems())
+
+
+def low(i):
+  if isinstance(i, int):
+    address = int2addr(i)
+  return (i & LOW_BYTE)[8:]
+
+
+def high(i):
+  if isinstance(i, int):
+    address = int2addr(i)
+  return low((i & HIGH_BYTE) >> 8)
+
+
+G.update(
+  low=low,
+  high=high,
+  range=xrange,
+  )
 
 
 class AVRAssembly(object):
@@ -47,6 +76,8 @@ class AVRAssembly(object):
       self.jmp,
       self.label,
       self.cli,
+      self.ldi,
+      self.out,
       ):
       self.context[f.__name__] = f
 
@@ -55,10 +86,12 @@ class AVRAssembly(object):
 
   # Directives
 
-  def define(self, **v):
-    for k_v in v.iteritems():
-      print 'defining %s = %#x' % k_v
-    self.context.update(v)
+  def define(self, **defs):
+    for k, v in defs.iteritems():
+      if isinstance(v, int):
+        defs[k] = v = intbv(v)
+      print 'defining %s = %#x' % (k, v)
+    self.context.update(defs)
 
   def org(self, address):
     if isinstance(address, int):
@@ -66,10 +99,14 @@ class AVRAssembly(object):
     print 'setting org to %#06x' % (address,)
     update(self.here, address)
 
-  def label(self, label_thunk):
+  def label(self, label_thunk, reserves=0):
+    assert label_thunk == 0, repr(label_thunk)
     name = self._name_of_address_thunk(label_thunk)
-    print 'label %s set from %#06x => %#06x' % (name, label_thunk, self.here)
+    print 'label %s => %#06x' % (name, self.here)
     update(label_thunk, self.here)
+    if reserves:
+      assert reserves > 0, repr(reserves)
+      self.here += reserves
 
   # Instructions
 
@@ -95,6 +132,22 @@ class AVRAssembly(object):
     self.data[addr] = ('cli',)
     self.here += 2
 
+  def ldi(self, target, address):
+    addr = '%#06x' % (self.here,)
+    assert addr not in self.data
+    print 'assembling ldi instruction at %s %#04x <- %#04x' % (addr, target, address)
+    self.data[addr] = ('ldi', target, address)
+    self.here += 2
+
+  def out(self, target, address):
+    addr = '%#06x' % (self.here,)
+    assert addr not in self.data
+    print 'assembling out instruction at %s %#04x <- %#04x' % (addr, target, address)
+    self.data[addr] = ('out', target, address)
+    self.here += 2
+
+
+
   # Assembler proper
 
   def assemble(self, text):
@@ -117,25 +170,32 @@ aa = AVRAssembly()
 aa.assemble('''
 define(TOS=r27)
 define(TOSL=r26)
+define(Working=r16)
 
 org(SRAM_START)
-print '...define some data pointers here'
-##  buffer: .byte 0x40
-##
-##  data_stack: .org 0x0140 ; SRAM_START + buffer
+buffer_length = 0x40
+label(buffer, reserves=buffer_length)
+label(data_stack)
 
 org(0x0000)
 jmp(RESET)
-jmp(BAD_INTERUPT)
-jmp(BAD_INTERUPT)
-jmp(BAD_INTERUPT)
-jmp(BAD_INTERUPT)
+for _ in range(4):   # Let's pretend there are four interrupt vectors.
+  jmp(BAD_INTERUPT)
 
 label(BAD_INTERUPT)
 jmp(0x0000)
 
 label(RESET)
 cli()
+
+ldi(Working, low(RAMEND))
+out(SPL, Working)
+ldi(Working, high(RAMEND))
+out(SPH, Working)
+
+ldi(YL, low(data_stack))
+ldi(YH, high(data_stack))
+
 ''')
 
 print ; print ; print
