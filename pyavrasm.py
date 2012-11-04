@@ -38,6 +38,7 @@ class AVRAssembly(object):
   def __init__(self, initial_context=None):
     if initial_context is None:
       initial_context = G.copy()
+
     self.context = defaultdict(lambda: int2addr(0))
     self.context.update(initial_context)
     for f in (
@@ -48,8 +49,11 @@ class AVRAssembly(object):
       self.cli,
       ):
       self.context[f.__name__] = f
+
     self.here = 0
     self.data = {}
+
+  # Directives
 
   def define(self, **v):
     for k_v in v.iteritems():
@@ -59,6 +63,13 @@ class AVRAssembly(object):
   def org(self, address):
     print 'setting org to', address
     self.here = int(address)
+
+  def label(self, label_thunk):
+    name = self._name_of_address_thunk(label_thunk)
+    print 'label %s set from %#06x => %#06x' % (name, label_thunk, self.here)
+    update(label_thunk, int2addr(self.here))
+
+  # Instructions
 
   def jmp(self, address):
     if isinstance(address, int):
@@ -75,17 +86,14 @@ class AVRAssembly(object):
     self.data[addr] = ('jmp', address)
     self.here += 2
 
-  def label(self, label_thunk):
-    name = self._name_of_address_thunk(label_thunk)
-    print 'label %s set from %#06x => %#06x' % (name, label_thunk, self.here)
-    update(label_thunk, int2addr(self.here))
-
   def cli(self):
     addr = '%#06x' % (self.here,)
     assert addr not in self.data
     print 'assembling cli instruction at %s' % (addr,)
     self.data[addr] = ('cli',)
     self.here += 2
+
+  # Assembler proper
 
   def assemble(self, text):
     exec text in self.context
