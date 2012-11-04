@@ -50,7 +50,7 @@ class AVRAssembly(object):
       ):
       self.context[f.__name__] = f
 
-    self.here = 0
+    self.here = int2addr(0)
     self.data = {}
 
   # Directives
@@ -61,13 +61,15 @@ class AVRAssembly(object):
     self.context.update(v)
 
   def org(self, address):
-    print 'setting org to', address
-    self.here = int(address)
+    if isinstance(address, int):
+      address = int2addr(address)
+    print 'setting org to %#06x' % (address,)
+    update(self.here, address)
 
   def label(self, label_thunk):
     name = self._name_of_address_thunk(label_thunk)
     print 'label %s set from %#06x => %#06x' % (name, label_thunk, self.here)
-    update(label_thunk, int2addr(self.here))
+    update(label_thunk, self.here)
 
   # Instructions
 
