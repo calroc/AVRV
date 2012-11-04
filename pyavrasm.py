@@ -16,12 +16,6 @@ def update(a, b):
     a[n] = b[n]
 
 
-##def _labels():
-##  n = 0
-##  while True:
-##    yield 'label_%i' % n
-##    n += 1
-
 ADDRESS_MAX = 2048
 
 
@@ -51,6 +45,7 @@ class AVRAssembly(object):
       self.org,
       self.jmp,
       self.label,
+      self.cli,
       ):
       self.context[f.__name__] = f
     self.here = 0
@@ -84,6 +79,13 @@ class AVRAssembly(object):
     name = self._name_of_address_thunk(label_thunk)
     print 'label %s set from %#06x => %#06x' % (name, label_thunk, self.here)
     update(label_thunk, int2addr(self.here))
+
+  def cli(self):
+    addr = '%#06x' % (self.here,)
+    assert addr not in self.data
+    print 'assembling cli instruction at %s' % (addr,)
+    self.data[addr] = ('cli',)
+    self.here += 2
 
   def assemble(self, text):
     exec text in self.context
@@ -123,6 +125,7 @@ label(BAD_INTERUPT)
 jmp(0x0000)
 
 label(RESET)
+cli()
 ''')
 
 print ; print ; print
