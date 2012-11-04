@@ -1,23 +1,42 @@
 import sys, pprint
 from collections import defaultdict
+from myhdl import intbv, bin as biny
 ##from intelhex import IntelHex
 ##
 ##ih = IntelHex("avrvm.hex")
 #ih.dump(sys.stdout)
 
 
-def _labels():
-  n = 0
-  while True:
-    yield 'label_%i' % n
-    n += 1
+def update(a, b):
+  '''
+  In-place update of an intbv with the value of another one.
+  '''
+  assert len(a) <= len(b), repr((a, b))
+  for n in range(len(a)):
+    a[n] = b[n]
 
 
-G = dict(
+##def _labels():
+##  n = 0
+##  while True:
+##    yield 'label_%i' % n
+##    n += 1
+
+ADDRESS_MAX = 2048
+
+
+def int2addr(i):
+  return intbv(i, min=0, max=ADDRESS_MAX)
+
+
+#: Global definitions.
+G = dict((k, int2addr(v)) for k, v in dict(
+
     SRAM_START=0x200,
     r26=0x26,
     r27=0x27,
-    )
+
+    ).iteritems())
 
 
 class AVRAssembly(object):
@@ -25,7 +44,7 @@ class AVRAssembly(object):
   def __init__(self, initial_context=None):
     if initial_context is None:
       initial_context = G.copy()
-    self.context = defaultdict(_labels().next)
+    self.context = defaultdict(lambda: int2addr(0))
     self.context.update(initial_context)
     for f in (
       self.define,
@@ -47,28 +66,35 @@ class AVRAssembly(object):
     self.here = int(address)
 
   def jmp(self, address):
-    instruction = 'jmp instruction at %#06x to %r' % (self.here, address)
-    print 'assembling', instruction
+    if isinstance(address, int):
+      name = '%#06x' % address
+      address = int2addr(address)
+    else:
+      assert isinstance(address, intbv), repr(address)
+      name = self._name_of_address_thunk(address)
+
     addr = '%#06x' % (self.here,)
     assert addr not in self.data
-    self.data[addr] = instruction
+
+    print 'assembling jmp instruction at %s to %s' % (addr, name)
+    self.data[addr] = ('jmp', address)
     self.here += 2
 
-  def label(self, label_value):
-    assert label_value.startswith('label_'), repr(label_value)
-    for k, v in self.context.iteritems():
-      if v == label_value:
-        name = k
-        break
-    else:
-      raise Exception('wtf %r' % (label_value,))
-
-    print 'label', name, '=>', self.here
-    self.context[name] = self.here
+  def label(self, label_thunk):
+    name = self._name_of_address_thunk(label_thunk)
+    print 'label %s set from %#06x => %#06x' % (name, label_thunk, self.here)
+    update(label_thunk, int2addr(self.here))
 
   def assemble(self, text):
     exec text in self.context
     del self.context['__builtins__']
+
+  def _name_of_address_thunk(self, thunk):
+    for k, v in self.context.iteritems():
+      if v is thunk:
+        return k
+    raise Exception('wtf %r' % (thunk,))
+
 
 
 aa = AVRAssembly()
@@ -81,12 +107,16 @@ define(TOS=r27)
 define(TOSL=r26)
 
 org(SRAM_START)
+print '...define some data pointers here'
 ##  buffer: .byte 0x40
 ##
 ##  data_stack: .org 0x0140 ; SRAM_START + buffer
 
 org(0x0000)
 jmp(RESET)
+jmp(BAD_INTERUPT)
+jmp(BAD_INTERUPT)
+jmp(BAD_INTERUPT)
 jmp(BAD_INTERUPT)
 
 label(BAD_INTERUPT)
