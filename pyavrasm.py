@@ -1,6 +1,7 @@
 import sys, pprint
 from collections import defaultdict
 from myhdl import intbv, bin as biny
+from pass2 import ops
 
 
 def update(a, b):
@@ -11,7 +12,7 @@ def update(a, b):
     a[n] = b[n]
 
 
-ADDRESS_MAX = 2048
+ADDRESS_MAX = 0x3fff
 LOW_BYTE = (1 << 8) - 1
 HIGH_BYTE = LOW_BYTE << 8
 
@@ -32,18 +33,18 @@ def _i(i):
 G = dict((k, int2addr(v)) for k, v in dict(
 
     SRAM_START=0x100,
-    RAMEND=ADDRESS_MAX - 1,
+    RAMEND=0x08ff,
 
-    SPL=0x12,
-    SPH=0x13,
-    YL=0x28,
-    YH=0x29,
+    SPL=0x3d,
+    SPH=0x3e,
+    YL=28,
+    YH=29,
 
-    r8=0x8,
-    r16=0x16,
-    r17=0x17,
-    r26=0x26,
-    r27=0x27,
+    r8=8,
+    r16=16,
+    r17=17,
+    r26=26,
+    r27=27,
 
     TWBR=0x23,
     TWSR=0x24,
@@ -141,40 +142,41 @@ class AVRAssembly(object):
   # Instructions
 
   def jmp(self, address):
-    return self._one('jmp', address)
+    self._one('jmp', address)
+    self.here += 2
 
   def rjmp(self, address):
-    return self._one('rjmp', address)
+    self._one('rjmp', address)
 
   def rcall(self, address):
-    return self._one('rcall', address)
+    self._one('rcall', address)
 
   def cli(self):
-    return self._none('cli')
+    self._none('cli')
 
   def sei(self):
-    return self._none('sei')
+    self._none('sei')
 
   def ret(self):
-    return self._none('ret')
+    self._none('ret')
 
   def ldi(self, target, address):
-    return self._two('ldi', target, address)
+    self._two('ldi', target, address)
 
   def out(self, target, address):
-    return self._two('out', target, address)
+    self._two('out', target, address)
 
   def sts(self, target, address):
-    return self._two('sts', target, address)
+    self._two('sts', target, address)
 
   def mov(self, target, address):
-    return self._two('mov', target, address)
+    self._two('mov', target, address)
 
   def lds(self, target, address):
-    return self._two('lds', target, address)
+    self._two('lds', target, address)
 
   def sbrs(self, target, address):
-    return self._two('sbrs', target, address)
+    self._two('sbrs', target, address)
 
   def _none(self, op):
     addr = self._get_here()
@@ -207,6 +209,15 @@ class AVRAssembly(object):
     execfile(filename, self.context)
     del self.context['__builtins__']
 
+  def pass2(self):
+    accumulator = []
+    for addr in sorted(self.data):
+      instruction = self.data[addr]
+      op, args = instruction[0], instruction[1:]
+      op = ops.get(op, lambda *args: args)
+      accumulator.append(op(*args))
+    return accumulator
+
   def _name_of_address_thunk(self, thunk):
     for k, v in self.context.iteritems():
       if v is thunk:
@@ -236,3 +247,5 @@ if __name__ == '__main__':
   pprint.pprint(dict(aa.context))
   print ; print ; print
   pprint.pprint(dict(aa.data))
+  print ; print ; print
+  pprint.pprint(aa.pass2())
