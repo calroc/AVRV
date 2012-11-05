@@ -32,7 +32,7 @@ def jmp(address):
 
 
 def cli():
-  return hex(0b1001010011111000)
+  return 0b1001010011111000
 
 
 @B
@@ -49,6 +49,21 @@ def out(io_port, register):
   '''
 
 
+@A
+def rcall(address):
+  '''
+  1101 kkkk kkkk kkkk
+  '''
+
+
+@B
+def sts(register, immediate):
+  '''
+  1001 001d dddd 0000
+  kkkk kkkk kkkk kkkk
+  '''
+
+
 def K(pattern, **values):
   counts = dict((variable_letter, 0) for variable_letter in values)
   p = list(reversed(''.join(pattern.lower().split())))
@@ -62,7 +77,7 @@ def K(pattern, **values):
     counts[bit] += 1
     bit = value[index]
     accumulator.append(bit)
-  return hex(concat(*reversed(accumulator)))
+  return concat(*reversed(accumulator))
 
 
 ops = dict((f.__name__, f) for f in (
@@ -70,6 +85,8 @@ ops = dict((f.__name__, f) for f in (
   cli,
   ldi,
   out,
+  rcall,
+  sts,
   ))
 
 

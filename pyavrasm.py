@@ -168,6 +168,7 @@ class AVRAssembly(object):
 
   def sts(self, target, address):
     self._two('sts', target, address)
+    self.here += 2
 
   def mov(self, target, address):
     self._two('mov', target, address)
@@ -215,7 +216,12 @@ class AVRAssembly(object):
       instruction = self.data[addr]
       op, args = instruction[0], instruction[1:]
       op = ops.get(op, lambda *args: args)
-      accumulator.append(op(*args))
+      data = op(*args)
+      try:
+        print '%-10x' % (data,), instruction
+      except TypeError:
+        print 10 * '.', instruction
+      accumulator.append(data)
     return accumulator
 
   def _name_of_address_thunk(self, thunk):
@@ -243,9 +249,10 @@ if __name__ == '__main__':
   aa = AVRAssembly()
   aa.assemble_file('asm.py')
 
+##  print ; print ; print
+##  pprint.pprint(dict(aa.context))
+##  print ; print ; print
+##  pprint.pprint(dict(aa.data))
   print ; print ; print
-  pprint.pprint(dict(aa.context))
-  print ; print ; print
-  pprint.pprint(dict(aa.data))
-  print ; print ; print
-  pprint.pprint(aa.pass2())
+##  pprint.pprint(aa.pass2())
+  aa.pass2()
