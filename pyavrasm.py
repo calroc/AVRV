@@ -172,8 +172,8 @@ class AVRAssembly(object):
     self._two('sts', address, register)
     self.here += 2
 
-  def mov(self, target, address):
-    self._two('mov', target, address)
+  def mov(self, target, source):
+    self._two('mov', target, source)
 
   def lds(self, target, address):
     self._two('lds', target, address)

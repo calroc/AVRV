@@ -30,6 +30,13 @@ def C(func):
   return inner
 
 
+def D(func):
+  @wraps(func)
+  def inner(Rd, Rr):
+    return K(func.__doc__, d=Rd, r=Rr)
+  return inner
+
+
 @A
 def jmp(address):
   '''
@@ -71,6 +78,13 @@ def sts(address, register):
   '''
 
 
+@D
+def mov(Rd, Rr):
+  '''
+  0010 11rd dddd rrrr
+  '''
+
+
 def K(pattern, **values):
   counts = dict((variable_letter, 0) for variable_letter in values)
   p = list(reversed(''.join(pattern.lower().split())))
@@ -94,6 +108,7 @@ ops = dict((f.__name__, f) for f in (
   out,
   rcall,
   sts,
+  mov,
   ))
 
 
