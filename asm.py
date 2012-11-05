@@ -55,3 +55,17 @@ ldi(r16, (1 << TXEN0) | (1 << RXEN0)) # Enable transmit/receive
 sts(UCSR0B, r16)
 ret()
 
+label(KEY)
+dw(0x0000)
+db(3, "key")
+
+label(KEY_PFA)
+lds(Working, UCSR0A)
+sbrs(Working, RXC0)
+rjmp(KEY_PFA)
+
+rcall(DUP_PFA)
+lds(TOS, UDR0)
+
+rcall(ECHO_PFA)
+ret()

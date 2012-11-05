@@ -81,6 +81,8 @@ class AVRAssembly(object):
       self.org,
       self.jmp,
       self.label,
+      self.dw,
+      self.db,
       self.cli,
       self.ldi,
       self.out,
@@ -90,6 +92,8 @@ class AVRAssembly(object):
       self.sei,
       self.rjmp,
       self.ret,
+      self.lds,
+      self.sbrs,
       ):
       self.context[f.__name__] = f
 
@@ -119,6 +123,20 @@ class AVRAssembly(object):
     if reserves:
       assert reserves > 0, repr(reserves)
       self.here += reserves
+
+  def dw(self, *values):
+    addr = self._get_here()
+    print 'assembling data words at %s for %s' % (addr, values)
+    self.data[addr] = ('dw', values)
+    self.here += 2
+##    values_bin_str = values_to_dw(values)
+##    self.here += len(values_bin_str)
+
+  def db(self, *values):
+    addr = self._get_here()
+    print 'assembling data bytes at %s for %s' % (addr, values)
+    self.data[addr] = ('db', values)
+    self.here += 2
 
   # Instructions
 
@@ -151,6 +169,12 @@ class AVRAssembly(object):
 
   def mov(self, target, address):
     return self._two('mov', target, address)
+
+  def lds(self, target, address):
+    return self._two('lds', target, address)
+
+  def sbrs(self, target, address):
+    return self._two('sbrs', target, address)
 
   def _none(self, op):
     addr = self._get_here()
