@@ -45,3 +45,13 @@ rcall(INTERPRET_PFA)
 rcall(DOTESS_PFA)
 rjmp(MAIN)
 
+label(UART_INIT)
+ldi(r17, high(520)) # 2400 baud w/ 20Mhz osc
+ldi(r16, low(520))  # See Datasheet
+sts(UBRR0H, r17)
+sts(UBRR0L, r16)
+# The chip defaults to 8N1 so we won't set it here even though we should.
+ldi(r16, (1 << TXEN0) | (1 << RXEN0)) # Enable transmit/receive
+sts(UCSR0B, r16)
+ret()
+

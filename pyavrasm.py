@@ -41,6 +41,7 @@ G = dict((k, int2addr(v)) for k, v in dict(
 
     r8=0x8,
     r16=0x16,
+    r17=0x17,
     r26=0x26,
     r27=0x27,
 
@@ -51,14 +52,12 @@ G = dict((k, int2addr(v)) for k, v in dict(
 
 
 def low(i):
-  if isinstance(i, int):
-    address = int2addr(i)
+  i = _i(i)
   return (i & LOW_BYTE)[8:]
 
 
 def high(i):
-  if isinstance(i, int):
-    address = int2addr(i)
+  i = _i(i)
   return low((i & HIGH_BYTE) >> 8)
 
 
@@ -90,6 +89,7 @@ class AVRAssembly(object):
       self.mov,
       self.sei,
       self.rjmp,
+      self.ret,
       ):
       self.context[f.__name__] = f
 
@@ -136,6 +136,9 @@ class AVRAssembly(object):
 
   def sei(self):
     return self._none('sei')
+
+  def ret(self):
+    return self._none('ret')
 
   def ldi(self, target, address):
     return self._two('ldi', target, address)
@@ -185,7 +188,6 @@ class AVRAssembly(object):
       if v is thunk:
         return k
     return '%#06x' % thunk
-##    raise Exception('wtf %r' % (thunk,))
 
   def _get_here(self):
     addr = '%#06x' % (self.here,)
