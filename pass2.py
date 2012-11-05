@@ -119,6 +119,14 @@ def rjmp(address):
   '''
 
 
+@B
+def lds(register, address):
+  '''
+  1001 000d dddd 0000
+  kkkk kkkk kkkk kkkk
+  '''
+
+
 ops = dict(
   (name, func)
   for name, func in locals().iteritems()

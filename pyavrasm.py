@@ -50,6 +50,14 @@ G = dict((k, int2addr(v)) for k, v in dict(
     TWSR=0xb9,
     UBRR0L=0xc4,
     UBRR0H=0xc5,
+    UCSR0A=0xc0,
+    UCSR0B=0xc1,
+    UCSR0C=0xc2,
+    TXEN0=3, # Transmitter Enable
+    RXEN0=4, # Receiver Enable
+
+    RXC0=7, # USART Receive Complete
+    UDR0=0xc6,
 
     ).iteritems())
 
@@ -177,6 +185,7 @@ class AVRAssembly(object):
 
   def lds(self, target, address):
     self._two('lds', target, address)
+    self.here += 2
 
   def sbrs(self, target, address):
     self._two('sbrs', target, address)
