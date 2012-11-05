@@ -104,6 +104,21 @@ def mov(Rd, Rr):
   '''
 
 
+def sei():
+  return 0b1001010001111000
+
+
+def ret():
+  return 0b1001010100001000
+
+
+@A
+def rjmp(address):
+  '''
+  1100 kkkk kkkk kkkk
+  '''
+
+
 ops = dict(
   (name, func)
   for name, func in locals().iteritems()
