@@ -46,8 +46,10 @@ G = dict((k, int2addr(v)) for k, v in dict(
     r26=26,
     r27=27,
 
-    TWBR=0x23,
-    TWSR=0x24,
+    TWBR=0xb8,
+    TWSR=0xb9,
+    UBRR0L=0xc4,
+    UBRR0H=0xc5,
 
     ).iteritems())
 
@@ -166,8 +168,8 @@ class AVRAssembly(object):
   def out(self, target, address):
     self._two('out', target, address)
 
-  def sts(self, target, address):
-    self._two('sts', target, address)
+  def sts(self, address, register):
+    self._two('sts', address, register)
     self.here += 2
 
   def mov(self, target, address):

@@ -16,6 +16,13 @@ def B(func):
   return inner
 
 
+def B_reversed(func):
+  @wraps(func)
+  def inner(address, register):
+    return K(func.__doc__, d=register, k=address)
+  return inner
+
+
 def C(func):
   @wraps(func)
   def inner(io_port, register):
@@ -56,8 +63,8 @@ def rcall(address):
   '''
 
 
-@B
-def sts(register, immediate):
+@B_reversed
+def sts(address, register):
   '''
   1001 001d dddd 0000
   kkkk kkkk kkkk kkkk
