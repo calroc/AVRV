@@ -37,6 +37,25 @@ def D(func):
   return inner
 
 
+def K(pattern, **values):
+  counts = dict((variable_letter, 0) for variable_letter in values)
+  p = list(reversed(''.join(pattern.lower().split())))
+  accumulator = []
+  for i, bit in enumerate(p):
+    if bit in '10':
+      accumulator.append(bool(int(bit)))
+      continue
+    assert bit in values, repr((i, bit, values))
+    index, value = counts[bit], values[bit]
+    counts[bit] += 1
+    bit = value[index]
+    accumulator.append(bit)
+  return concat(*reversed(accumulator))
+
+
+_mark = set(dir())
+
+
 @A
 def jmp(address):
   '''
@@ -85,37 +104,8 @@ def mov(Rd, Rr):
   '''
 
 
-def K(pattern, **values):
-  counts = dict((variable_letter, 0) for variable_letter in values)
-  p = list(reversed(''.join(pattern.lower().split())))
-  accumulator = []
-  for i, bit in enumerate(p):
-    if bit in '10':
-      accumulator.append(bool(int(bit)))
-      continue
-    assert bit in values, repr((i, bit, values))
-    index, value = counts[bit], values[bit]
-    counts[bit] += 1
-    bit = value[index]
-    accumulator.append(bit)
-  return concat(*reversed(accumulator))
-
-
-ops = dict((f.__name__, f) for f in (
-  jmp,
-  cli,
-  ldi,
-  out,
-  rcall,
-  sts,
-  mov,
-  ))
-
-
-if __name__ == '__main__':
-  z = intbv(0b1111000011100011001010)
-  x = jmp(z)
-
-
-##j = K(bits, k=intbv(1<<21))
-##k = K(bits, k=intbv((1<<22) - 1))
+ops = dict(
+  (name, func)
+  for name, func in locals().iteritems()
+  if name not in _mark
+  )
