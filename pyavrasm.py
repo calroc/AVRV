@@ -7,7 +7,6 @@ def update(a, b):
   '''
   In-place update of an intbv with the value of another one.
   '''
-  assert len(a) <= len(b), repr((a, b))
   for n in range(len(a)):
     a[n] = b[n]
 
@@ -21,6 +20,14 @@ def int2addr(i):
   return intbv(i, min=0, max=ADDRESS_MAX)
 
 
+def _i(i):
+  if isinstance(i, int):
+    return intbv(i)
+  if not isinstance(i, intbv):
+    raise ValueError
+  return i
+
+
 #: Global definitions.
 G = dict((k, int2addr(v)) for k, v in dict(
 
@@ -32,9 +39,13 @@ G = dict((k, int2addr(v)) for k, v in dict(
     YL=0x28,
     YH=0x29,
 
+    r8=0x8,
     r16=0x16,
     r26=0x26,
     r27=0x27,
+
+    TWBR=0x23,
+    TWSR=0x24,
 
     ).iteritems())
 
@@ -74,6 +85,9 @@ class AVRAssembly(object):
       self.cli,
       self.ldi,
       self.out,
+      self.rcall,
+      self.sts,
+      self.mov,
       ):
       self.context[f.__name__] = f
 
@@ -85,17 +99,17 @@ class AVRAssembly(object):
   def define(self, **defs):
     for k, v in defs.iteritems():
       if isinstance(v, int):
-        defs[k] = v = intbv(v)
+        defs[k] = v = _i(v)
       print 'defining %s = %#x' % (k, v)
     self.context.update(defs)
 
   def org(self, address):
-    if isinstance(address, int):
-      address = int2addr(address)
+    address = _i(address)
     print 'setting org to %#06x' % (address,)
     update(self.here, address)
 
   def label(self, label_thunk, reserves=0):
+    assert isinstance(label_thunk, intbv), repr(label_thunk)
     assert label_thunk == 0, repr(label_thunk)
     name = self._name_of_address_thunk(label_thunk)
     print 'label %s => %#06x' % (name, self.here)
@@ -114,32 +128,39 @@ class AVRAssembly(object):
       assert isinstance(address, intbv), repr(address)
       name = self._name_of_address_thunk(address)
 
-    addr = '%#06x' % (self.here,)
-    assert addr not in self.data
-
+    addr = self._get_here()
     print 'assembling jmp instruction at %s to %s' % (addr, name)
     self.data[addr] = ('jmp', address)
     self.here += 2
 
   def cli(self):
-    addr = '%#06x' % (self.here,)
-    assert addr not in self.data
+    addr = self._get_here()
     print 'assembling cli instruction at %s' % (addr,)
     self.data[addr] = ('cli',)
     self.here += 2
 
   def ldi(self, target, address):
-    addr = '%#06x' % (self.here,)
-    assert addr not in self.data
-    print 'assembling ldi instruction at %s %#04x <- %#04x' % (addr, target, address)
-    self.data[addr] = ('ldi', target, address)
-    self.here += 2
+    return self._two('ldi', target, address)
 
   def out(self, target, address):
-    addr = '%#06x' % (self.here,)
-    assert addr not in self.data
-    print 'assembling out instruction at %s %#04x <- %#04x' % (addr, target, address)
-    self.data[addr] = ('out', target, address)
+    return self._two('out', target, address)
+
+  def rcall(self, address):
+    addr = self._get_here()
+    print 'assembling rcall instruction at %s to %#06x' % (addr, address)
+    self.data[addr] = ('rcall', addr, address)
+    self.here += 2
+
+  def sts(self, target, address):
+    return self._two('sts', target, address)
+
+  def mov(self, target, address):
+    return self._two('mov', target, address)
+
+  def _two(self, op, target, address):
+    addr = self._get_here()
+    print 'assembling %s instruction at %s %#06x <- %#06x' % (op, addr, target, address)
+    self.data[addr] = (op, target, address)
     self.here += 2
 
   # Assembler proper
@@ -158,6 +179,10 @@ class AVRAssembly(object):
         return k
     raise Exception('wtf %r' % (thunk,))
 
+  def _get_here(self):
+    addr = '%#06x' % (self.here,)
+    assert addr not in self.data
+    return addr
 
 
 if __name__ == '__main__':

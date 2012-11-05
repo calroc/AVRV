@@ -2,6 +2,7 @@
 define(TOS=r27)
 define(TOSL=r26)
 define(Working=r16)
+define(Base=r8)
 
 org(SRAM_START)
 buffer_length = 0x40
@@ -27,5 +28,13 @@ out(SPH, Working)
 ldi(YL, low(data_stack))
 ldi(YH, high(data_stack))
 
-# rcall(UART_INIT)
+rcall(UART_INIT)
 
+
+ldi(Working, 23)
+sts(TWBR, Working) # set bitrate
+ldi(Working, 1)
+sts(TWSR, Working) # set prescaler
+
+ldi(Working, 10)
+mov(Base, Working)
