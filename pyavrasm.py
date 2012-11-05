@@ -148,6 +148,10 @@ class AVRAssembly(object):
     exec text in self.context
     del self.context['__builtins__']
 
+  def assemble_file(self, filename):
+    execfile(filename, self.context)
+    del self.context['__builtins__']
+
   def _name_of_address_thunk(self, thunk):
     for k, v in self.context.iteritems():
       if v is thunk:
@@ -158,7 +162,7 @@ class AVRAssembly(object):
 
 if __name__ == '__main__':
   aa = AVRAssembly()
-  aa.assemble(open('asm.py').read())
+  aa.assemble_file('asm.py')
 
   print ; print ; print
   pprint.pprint(dict(aa.context))
