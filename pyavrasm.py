@@ -88,6 +88,8 @@ class AVRAssembly(object):
       self.rcall,
       self.sts,
       self.mov,
+      self.sei,
+      self.rjmp,
       ):
       self.context[f.__name__] = f
 
@@ -121,23 +123,19 @@ class AVRAssembly(object):
   # Instructions
 
   def jmp(self, address):
-    if isinstance(address, int):
-      name = '%#06x' % address
-      address = int2addr(address)
-    else:
-      assert isinstance(address, intbv), repr(address)
-      name = self._name_of_address_thunk(address)
+    return self._one('jmp', address)
 
-    addr = self._get_here()
-    print 'assembling jmp instruction at %s to %s' % (addr, name)
-    self.data[addr] = ('jmp', address)
-    self.here += 2
+  def rjmp(self, address):
+    return self._one('rjmp', address)
+
+  def rcall(self, address):
+    return self._one('rcall', address)
 
   def cli(self):
-    addr = self._get_here()
-    print 'assembling cli instruction at %s' % (addr,)
-    self.data[addr] = ('cli',)
-    self.here += 2
+    return self._none('cli')
+
+  def sei(self):
+    return self._none('sei')
 
   def ldi(self, target, address):
     return self._two('ldi', target, address)
@@ -145,21 +143,30 @@ class AVRAssembly(object):
   def out(self, target, address):
     return self._two('out', target, address)
 
-  def rcall(self, address):
-    addr = self._get_here()
-    print 'assembling rcall instruction at %s to %#06x' % (addr, address)
-    self.data[addr] = ('rcall', addr, address)
-    self.here += 2
-
   def sts(self, target, address):
     return self._two('sts', target, address)
 
   def mov(self, target, address):
     return self._two('mov', target, address)
 
-  def _two(self, op, target, address):
+  def _none(self, op):
     addr = self._get_here()
-    print 'assembling %s instruction at %s %#06x <- %#06x' % (op, addr, target, address)
+    print 'assembling %s instruction at %s' % (op, addr,)
+    self.data[addr] = (op,)
+    self.here += 2
+
+  def _one(self, op, address):
+    name, address = self._name_or_addr(address)
+    addr = self._get_here()
+    print 'assembling %s instruction at %s to %s' % (op, addr, name)
+    self.data[addr] = (op, address)
+    self.here += 2
+
+  def _two(self, op, target, address):
+    tname, taddress = self._name_or_addr(target)
+    name, address = self._name_or_addr(address)
+    addr = self._get_here()
+    print 'assembling %s instruction at %s %s <- %s' % (op, addr, tname, name)
     self.data[addr] = (op, target, address)
     self.here += 2
 
@@ -177,12 +184,22 @@ class AVRAssembly(object):
     for k, v in self.context.iteritems():
       if v is thunk:
         return k
-    raise Exception('wtf %r' % (thunk,))
+    return '%#06x' % thunk
+##    raise Exception('wtf %r' % (thunk,))
 
   def _get_here(self):
     addr = '%#06x' % (self.here,)
     assert addr not in self.data
     return addr
+
+  def _name_or_addr(self, address):
+    if isinstance(address, int):
+      name = '%#06x' % address
+      address = int2addr(address)
+    else:
+      assert isinstance(address, intbv), repr(address)
+      name = self._name_of_address_thunk(address)
+    return name, address
 
 
 if __name__ == '__main__':

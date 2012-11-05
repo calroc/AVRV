@@ -30,7 +30,6 @@ ldi(YH, high(data_stack))
 
 rcall(UART_INIT)
 
-
 ldi(Working, 23)
 sts(TWBR, Working) # set bitrate
 ldi(Working, 1)
@@ -38,3 +37,11 @@ sts(TWSR, Working) # set prescaler
 
 ldi(Working, 10)
 mov(Base, Working)
+
+sei()
+
+label(MAIN)
+rcall(INTERPRET_PFA)
+rcall(DOTESS_PFA)
+rjmp(MAIN)
+
