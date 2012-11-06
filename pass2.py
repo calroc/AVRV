@@ -1,5 +1,4 @@
 from functools import wraps
-from struct import pack
 from myhdl import intbv, concat
 
 
@@ -59,12 +58,6 @@ def K(pattern, **values):
     bit = value[index]
     accumulator.append(bit)
   return concat(*reversed(accumulator))
-
-
-def pack_word_name(name):
-  n = len(name)
-  n = n + 2 - (n % 2)
-  return pack(str(n) + 'p', name)
 
 
 _mark = set(dir())
@@ -148,17 +141,12 @@ def sbrs(register, bit):
   '''
 
 
-def dw(values):
-  accumulator = []
-  for value in values:
-    accumulator.append(pack('H', value))
-  return ''.join(accumulator)
+def dw(values, data):
+  return data
 
 
-def db(values):
-  length, name = values
-  assert length == len(name)
-  return pack_word_name(name)
+def db(values, data):
+  return data
 
 
 ops = dict(

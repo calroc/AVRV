@@ -1,5 +1,6 @@
 import sys, pprint
 from collections import defaultdict
+from struct import pack
 from myhdl import intbv, bin as biny
 from pass2 import ops
 
@@ -137,20 +138,20 @@ class AVRAssembly(object):
 
   def dw(self, *values):
     addr = self._get_here()
-    data = ops['dw'](values)
+    data = compute_dw(values)
     nbytes = len(data)
     print 'assembling %i data words at %s for %s => %r' % (nbytes/2, addr, values, data)
-    self.data[addr] = ('dw', values)
+    self.data[addr] = ('dw', values, data)
     self.here += nbytes
 ##    values_bin_str = values_to_dw(values)
 ##    self.here += len(values_bin_str)
 
   def db(self, *values):
     addr = self._get_here()
-    data = ops['db'](values)
+    data = compute_db(values)
     nbytes = len(data)
     print 'assembling %i data bytes at %s for %s => %r' % (nbytes, addr, values, data)
-    self.data[addr] = ('db', values)
+    self.data[addr] = ('db', values, data)
     self.here += nbytes
 
   # Instructions
@@ -261,6 +262,25 @@ class AVRAssembly(object):
       assert isinstance(address, intbv), repr(address)
       name = self._name_of_address_thunk(address)
     return name, address
+
+
+def pack_word_name(name):
+  n = len(name)
+  n = n + 2 - (n % 2)
+  return pack(str(n) + 'p', name)
+
+
+def compute_dw(values):
+  accumulator = []
+  for value in values:
+    accumulator.append(pack('H', value))
+  return ''.join(accumulator)
+
+
+def compute_db(values):
+  length, name = values
+  assert length == len(name)
+  return pack_word_name(name)
 
 
 if __name__ == '__main__':
