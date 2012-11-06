@@ -1,4 +1,5 @@
 from functools import wraps
+from struct import pack
 from myhdl import intbv, concat
 
 
@@ -37,6 +38,13 @@ def D(func):
   return inner
 
 
+def E(func):
+  @wraps(func)
+  def inner(Rr, bit):
+    return K(func.__doc__, r=Rr, b=bit)
+  return inner
+
+
 def K(pattern, **values):
   counts = dict((variable_letter, 0) for variable_letter in values)
   p = list(reversed(''.join(pattern.lower().split())))
@@ -53,8 +61,14 @@ def K(pattern, **values):
   return concat(*reversed(accumulator))
 
 
-_mark = set(dir())
+def pack_word_name(name):
+  n = len(name)
+  n = n + 2 - (n % 2)
+  return pack(str(n) + 'p', name)
 
+
+_mark = set(dir())
+_mark.add('_mark')
 
 @A
 def jmp(address):
@@ -127,8 +141,33 @@ def lds(register, address):
   '''
 
 
+@E
+def sbrs(register, bit):
+  '''
+  1111 111r rrrr 0bbb
+  '''
+
+
+def dw(values):
+  accumulator = []
+  for value in values:
+    accumulator.append(pack('H', value))
+  return ''.join(accumulator)
+
+
+def db(values):
+  length, name = values
+  assert length == len(name)
+  return pack_word_name(name)
+
+
 ops = dict(
   (name, func)
   for name, func in locals().iteritems()
   if name not in _mark
   )
+
+
+if __name__ == '__main__':
+  import pprint
+  pprint.pprint(ops)

@@ -137,17 +137,21 @@ class AVRAssembly(object):
 
   def dw(self, *values):
     addr = self._get_here()
-    print 'assembling data words at %s for %s' % (addr, values)
+    data = ops['dw'](values)
+    nbytes = len(data)
+    print 'assembling %i data words at %s for %s => %r' % (nbytes/2, addr, values, data)
     self.data[addr] = ('dw', values)
-    self.here += 2
+    self.here += nbytes
 ##    values_bin_str = values_to_dw(values)
 ##    self.here += len(values_bin_str)
 
   def db(self, *values):
     addr = self._get_here()
-    print 'assembling data bytes at %s for %s' % (addr, values)
+    data = ops['db'](values)
+    nbytes = len(data)
+    print 'assembling %i data bytes at %s for %s => %r' % (nbytes, addr, values, data)
     self.data[addr] = ('db', values)
-    self.here += 2
+    self.here += nbytes
 
   # Instructions
 
@@ -226,12 +230,15 @@ class AVRAssembly(object):
     for addr in sorted(self.data):
       instruction = self.data[addr]
       op, args = instruction[0], instruction[1:]
-      op = ops.get(op, lambda *args: args)
-      data = op(*args)
-      try:
-        print '%-10x' % (data,), instruction
-      except TypeError:
-        print 10 * '.', instruction
+      opf = ops.get(op, lambda *args: args)
+      data = opf(*args)
+      if op in ('db', 'dw'):
+        print 10 * ' ', op, len(data), 'bytes:', repr(data)
+      else:
+        try:
+          print '%-10x' % (data,), instruction
+        except TypeError:
+          print 10 * '.', instruction
       accumulator.append(data)
     return accumulator
 
