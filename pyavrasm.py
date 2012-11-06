@@ -234,12 +234,12 @@ class AVRAssembly(object):
       opf = ops.get(op, lambda *args: args)
       data = opf(*args)
       if op in ('db', 'dw'):
-        print 10 * ' ', op, len(data), 'bytes:', repr(data)
+        print addr, 10 * ' ', op, len(data), 'bytes:', repr(data)
       else:
         try:
-          print '%-10x' % (data,), instruction
+          print addr, '%-10x' % (data,), instruction
         except TypeError:
-          print 10 * '.', instruction
+          print addr, 10 * '.', instruction
       accumulator.append(data)
     return accumulator
 
