@@ -44,6 +44,20 @@ def E(func):
   return inner
 
 
+def F(func):
+  @wraps(func)
+  def inner(Rr):
+    return K(func.__doc__, r=Rr)
+  return inner
+
+
+def G(func):
+  @wraps(func)
+  def inner(Rd):
+    return K(func.__doc__, d=Rd)
+  return inner
+
+
 def K(pattern, **values):
   counts = dict((variable_letter, 0) for variable_letter in values)
   p = list(reversed(''.join(pattern.lower().split())))
@@ -147,6 +161,94 @@ def dw(values, data):
 
 def db(values, data):
   return data
+
+
+@F
+def st_post_incr_Y(Rr):
+  '''
+  1001 001r rrrr 1001
+  '''
+
+
+@G
+def ld_pre_decr_Y(Rd):
+  '''
+  1001 000d dddd 1010
+  '''
+
+
+@G
+def lpm_post_incr_Z(Rd):
+  '''
+  1001 000d dddd 0101
+  '''
+
+
+@B
+def cpi(register, immediate):
+  '''
+  0011 KKKK dddd KKKK
+  '''
+
+
+@A
+def brne(address):
+  '''
+  1111 01kk kkkk k001
+  '''
+
+
+@A
+def breq(address):
+  '''
+  1111 00kk kkkk k001
+  '''
+
+
+@G
+def lsr(Rd):
+  '''
+  1001 010d dddd 0110
+  '''
+
+
+@D
+def add(Rd, Rr):
+  '''
+  0000 11rd dddd rrrr
+  '''
+
+
+@A
+def brcc(address):
+  '''
+  1111 01kk kkkk k000
+  '''
+
+
+@G
+def inc(Rd):
+  '''
+  1001 010d dddd 0011
+  '''
+
+
+@G
+def dec(Rd):
+  '''
+  1001 010d dddd 1010
+  '''
+
+
+def ijmp():
+  return 0b1001010000001001
+
+
+@D
+def cp(Rd, Rr):
+  '''
+  0001 01rd dddd rrrr
+  '''
 
 
 ops = dict(

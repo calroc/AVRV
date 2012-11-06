@@ -394,12 +394,6 @@ class AVRAssembly(InstructionsMixin, object):
     return name, address
 
 
-def pack_word_name(name):
-  n = len(name)
-  n = n + 2 - (n % 2)
-  return pack(str(n) + 'p', name)
-
-
 def compute_dw(values):
   accumulator = []
   for value in values:
