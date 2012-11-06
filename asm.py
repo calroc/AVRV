@@ -1,4 +1,5 @@
 
+
 define(TOS=r27)
 define(TOSL=r26)
 define(Working=r16)
@@ -68,4 +69,33 @@ rcall(DUP_PFA)
 lds(TOS, UDR0)
 
 rcall(ECHO_PFA)
+ret()
+
+
+label(DUP)
+dw(KEY)
+db(3, "dup")
+label(DUP_PFA)
+st_post_incr(Y, TOSL) # push TOSL onto data stack
+mov(TOSL, TOS)
+ret()
+
+label(EMIT)
+dw(DUP)
+db(4, "emit")
+label(EMIT_PFA)
+rcall(ECHO_PFA)
+rcall(DROP_PFA)
+ret()
+
+label(ECHO)
+dw(EMIT)
+db(4, "echo")
+
+label(ECHO_PFA)
+lds(Working, UCSR0A)
+sbrs(Working, UDRE0)
+rjmp(ECHO_PFA)
+
+sts(UDR0, TOS)
 ret()

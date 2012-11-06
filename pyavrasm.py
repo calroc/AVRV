@@ -47,6 +47,10 @@ G = dict((k, int2addr(v)) for k, v in dict(
     r26=26,
     r27=27,
 
+    X=26,
+    Y=28,
+    Z=30,
+
     TWBR=0xb8,
     TWSR=0xb9,
     UBRR0L=0xc4,
@@ -106,6 +110,7 @@ class AVRAssembly(object):
       self.ret,
       self.lds,
       self.sbrs,
+      self.st_post_incr,
       ):
       self.context[f.__name__] = f
 
@@ -195,6 +200,17 @@ class AVRAssembly(object):
   def sbrs(self, target, address):
     self._two('sbrs', target, address)
 
+  def st_post_incr(self, ptr, register):
+    if ptr == 26:
+      op = 'st_post_incr_X'
+    elif ptr == 28:
+      op = 'st_post_incr_Y'
+    elif ptr == 30:
+      op = 'st_post_incr_Z'
+    else:
+      raise Exception("Invalid target for st: %#x" % (ptr,))
+    self._one(op, register)
+
   def _none(self, op):
     addr = self._get_here()
     print 'assembling %s instruction at %s' % (op, addr,)
@@ -237,9 +253,11 @@ class AVRAssembly(object):
         print addr, 10 * ' ', op, len(data), 'bytes:', repr(data)
       else:
         try:
-          print addr, '%-10x' % (data,), instruction
+          fdata = '%-10x' % (data,)
         except TypeError:
           print addr, 10 * '.', instruction
+        else:
+          print addr, fdata, instruction
       accumulator.append(data)
     return accumulator
 
@@ -278,9 +296,16 @@ def compute_dw(values):
 
 
 def compute_db(values):
-  length, name = values
-  assert length == len(name)
-  return pack_word_name(name)
+  accumulator = []
+  for value in values:
+    if isinstance(value, str):
+      accumulator.append(value)
+    elif isinstance(value, int):
+      accumulator.append(pack('B', value))
+  data = ''.join(accumulator)
+  if len(data) % 2:
+    data = data + '\0'
+  return data
 
 
 if __name__ == '__main__':
