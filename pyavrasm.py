@@ -84,82 +84,7 @@ G.update(
   )
 
 
-class AVRAssembly(object):
-
-  def __init__(self, initial_context=None):
-    if initial_context is None:
-      initial_context = G.copy()
-
-    self.context = defaultdict(lambda: int2addr(0))
-    self.context.update(initial_context)
-    for f in (
-      self.define,
-      self.org,
-      self.jmp,
-      self.label,
-      self.dw,
-      self.db,
-      self.cli,
-      self.ldi,
-      self.out,
-      self.rcall,
-      self.sts,
-      self.mov,
-      self.sei,
-      self.rjmp,
-      self.ret,
-      self.lds,
-      self.sbrs,
-      self.st_post_incr,
-      ):
-      self.context[f.__name__] = f
-
-    self.here = int2addr(0)
-    self.data = {}
-
-  # Directives
-
-  def define(self, **defs):
-    for k, v in defs.iteritems():
-      if isinstance(v, int):
-        defs[k] = v = _i(v)
-      print 'defining %s = %#x' % (k, v)
-    self.context.update(defs)
-
-  def org(self, address):
-    address = _i(address)
-    print 'setting org to %#06x' % (address,)
-    update(self.here, address)
-
-  def label(self, label_thunk, reserves=0):
-    assert isinstance(label_thunk, intbv), repr(label_thunk)
-    assert label_thunk == 0, repr(label_thunk)
-    name = self._name_of_address_thunk(label_thunk)
-    print 'label %s => %#06x' % (name, self.here)
-    update(label_thunk, self.here)
-    if reserves:
-      assert reserves > 0, repr(reserves)
-      self.here += reserves
-
-  def dw(self, *values):
-    addr = self._get_here()
-    data = compute_dw(values)
-    nbytes = len(data)
-    print 'assembling %i data words at %s for %s => %r' % (nbytes/2, addr, values, data)
-    self.data[addr] = ('dw', values, data)
-    self.here += nbytes
-##    values_bin_str = values_to_dw(values)
-##    self.here += len(values_bin_str)
-
-  def db(self, *values):
-    addr = self._get_here()
-    data = compute_db(values)
-    nbytes = len(data)
-    print 'assembling %i data bytes at %s for %s => %r' % (nbytes, addr, values, data)
-    self.data[addr] = ('db', values, data)
-    self.here += nbytes
-
-  # Instructions
+class InstructionsMixin(object):
 
   def jmp(self, address):
     self._one('jmp', address)
@@ -211,6 +136,120 @@ class AVRAssembly(object):
       raise Exception("Invalid target for st: %#x" % (ptr,))
     self._one(op, register)
 
+  def ld_post_incr(self, register, ptr):
+    if ptr == 26:
+      op = 'ld_post_incr_X'
+    elif ptr == 28:
+      op = 'ld_post_incr_Y'
+    elif ptr == 30:
+      op = 'ld_post_incr_Z'
+    else:
+      raise Exception("Invalid target for ld: %#x" % (ptr,))
+    self._one(op, register)
+
+  def ld_pre_decr(self, register, ptr):
+    if ptr == 26:
+      op = 'ld_pre_decr_X'
+    elif ptr == 28:
+      op = 'ld_pre_decr_Y'
+    elif ptr == 30:
+      op = 'ld_pre_decr_Z'
+    else:
+      raise Exception("Invalid target for ld: %#x" % (ptr,))
+    self._one(op, register)
+
+  def lpm_post_incr(self, register, ptr):
+    if ptr == 26:
+      op = 'lpm_post_incr_X'
+    elif ptr == 28:
+      op = 'lpm_post_incr_Y'
+    elif ptr == 30:
+      op = 'lpm_post_incr_Z'
+    else:
+      raise Exception("Invalid target for lpm: %#x" % (ptr,))
+    self._one(op, register)
+
+  def cpi(self, register, immediate):
+    self._two('cpi', register, immediate)
+
+  def brne(self, address):
+    self._one('brne', address)
+
+  def breq(self, address):
+    self._one('breq', address)
+
+  def inc(self, address):
+    self._one('inc', address)
+
+  def mul(self, target, source):
+    self._two('mul', target, source)
+
+  def brlo(self, address):
+    self._one('brlo', address)
+
+  def subi(self, target, source):
+    self._two('subi', target, source)
+
+  def add(self, target, source):
+    self._two('add', target, source)
+
+  def dec(self, address):
+    self._one('dec', address)
+
+  def clr(self, address):
+    self._one('clr', address)
+
+  def lsl(self, address):
+    self._one('lsl', address)
+
+  def brcc(self, address):
+    self._one('brcc', address)
+
+  def or_(self, target, source):
+    self._two('or_', target, source)
+
+  def push(self, address):
+    self._one('push', address)
+
+  def swap(self, address):
+    self._one('swap', address)
+
+  def pop(self, address):
+    self._one('pop', address)
+
+  def movw(self, target, source):
+    self._two('movw', target, source)
+
+  def andi(self, target, source):
+    self._two('andi', target, source)
+
+  def adiw(self, target, source):
+    self._two('adiw', target, source)
+
+  def lpm(self, target, source):
+    self._two('lpm', target, source)
+
+  def cp(self, target, source):
+    self._two('cp', target, source)
+
+  def cpc(self, target, source):
+    self._two('cpc', target, source)
+
+  def brsh(self, address):
+    self._one('brsh', address)
+
+  def cpse(self, target, source):
+    self._two('cpse', target, source)
+
+  def sbiw(self, target, source):
+    self._two('sbiw', target, source)
+
+  def lsr(self, address):
+    self._one('lsr', address)
+
+  def ijmp(self):
+    self._none('ijmp')
+
   def _none(self, op):
     addr = self._get_here()
     print 'assembling %s instruction at %s' % (op, addr,)
@@ -231,6 +270,76 @@ class AVRAssembly(object):
     print 'assembling %s instruction at %s %s <- %s' % (op, addr, tname, name)
     self.data[addr] = (op, target, address)
     self.here += 2
+
+  def _instruction_namespace(self):
+    for n in dir(InstructionsMixin):
+      if n.startswith('_'):
+        continue
+      yield n, getattr(self, n)
+
+
+class AVRAssembly(InstructionsMixin, object):
+
+  def __init__(self, initial_context=None):
+    if initial_context is None:
+      initial_context = G.copy()
+
+    self.context = defaultdict(lambda: int2addr(0))
+    self.context.update(initial_context)
+    self.context.update(self._instruction_namespace())
+    for f in (
+      self.define,
+      self.org,
+      self.label,
+      self.dw,
+      self.db,
+      ):
+      self.context[f.__name__] = f
+
+    self.here = int2addr(0)
+    self.data = {}
+
+  # Directives
+
+  def define(self, **defs):
+    for k, v in defs.iteritems():
+      if isinstance(v, int):
+        defs[k] = v = _i(v)
+      print 'defining %s = %#x' % (k, v)
+    self.context.update(defs)
+
+  def org(self, address):
+    address = _i(address)
+    print 'setting org to %#06x' % (address,)
+    update(self.here, address)
+
+  def label(self, label_thunk, reserves=0):
+    assert isinstance(label_thunk, intbv), repr(label_thunk)
+    assert label_thunk == 0, repr(label_thunk)
+    name = self._name_of_address_thunk(label_thunk)
+    print 'label %s => %#06x' % (name, self.here)
+    update(label_thunk, self.here)
+    if reserves:
+      assert reserves > 0, repr(reserves)
+      self.here += reserves
+
+  def dw(self, *values):
+    addr = self._get_here()
+    data = compute_dw(values)
+    nbytes = len(data)
+    print 'assembling %i data words at %s for %s => %r' % (nbytes/2, addr, values, data)
+    self.data[addr] = ('dw', values, data)
+    self.here += nbytes
+##    values_bin_str = values_to_dw(values)
+##    self.here += len(values_bin_str)
+
+  def db(self, *values):
+    addr = self._get_here()
+    data = compute_db(values)
+    nbytes = len(data)
+    print 'assembling %i data bytes at %s for %s => %r' % (nbytes, addr, values, data)
+    self.data[addr] = ('db', values, data)
+    self.here += nbytes
 
   # Assembler proper
 
@@ -273,6 +382,9 @@ class AVRAssembly(object):
     return addr
 
   def _name_or_addr(self, address):
+    if isinstance(address, str):
+      assert len(address) == 1, repr(address)
+      address = ord(address)
     if isinstance(address, int):
       name = '%#06x' % address
       address = int2addr(address)
