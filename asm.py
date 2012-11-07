@@ -30,7 +30,7 @@ def popupw():
 
 org(0x0000)
 jmp(RESET)
-for _ in range(4):   # Let's pretend there are four interrupt vectors.
+for _ in range(25):   # There are 25 interrupt vectors.
   jmp(BAD_INTERUPT)
 
 label(BAD_INTERUPT)

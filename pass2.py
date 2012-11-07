@@ -1,4 +1,5 @@
 from functools import wraps
+from struct import pack
 from myhdl import intbv, concat
 
 
@@ -58,9 +59,18 @@ def G(func):
   return inner
 
 
+def H(func):
+  @wraps(func)
+  def inner(register, bit):
+    return K(func.__doc__, A=register, b=bit)
+  return inner
+
+
 def K(pattern, **values):
   counts = dict((variable_letter, 0) for variable_letter in values)
   p = list(reversed(''.join(pattern.lower().split())))
+  n = len(p)
+  assert n in (16, 32), repr(pattern)
   accumulator = []
   for i, bit in enumerate(p):
     if bit in '10':
@@ -71,7 +81,20 @@ def K(pattern, **values):
     counts[bit] += 1
     bit = value[index]
     accumulator.append(bit)
-  return concat(*reversed(accumulator))
+  data = concat(*reversed(accumulator))
+  return n, data
+##  if n == 16:
+##    return pack('H', data)
+##  else:
+##    return pack('2H', data[32:16], data[16:])
+
+
+def raw(f):
+  @wraps(f)
+  def _inner(*a, **b):
+    data = f(*a, **b)
+    return pack('H', data)
+  return _inner
 
 
 _mark = set(dir())
@@ -85,6 +108,7 @@ def jmp(address):
   '''
 
 
+@raw
 def cli():
   return 0b1001010011111000
 
@@ -125,10 +149,12 @@ def mov(Rd, Rr):
   '''
 
 
+@raw
 def sei():
   return 0b1001010001111000
 
 
+@raw
 def ret():
   return 0b1001010100001000
 
@@ -170,10 +196,45 @@ def st_post_incr_Y(Rr):
   '''
 
 
+@F
+def st_post_incr_Z(Rr):
+  '''
+  1001 001r rrrr 0001
+  '''
+
+
 @G
 def ld_pre_decr_Y(Rd):
   '''
   1001 000d dddd 1010
+  '''
+
+
+@G
+def ld_post_incr_X(Rd):
+  '''
+  1001 000d dddd 1101
+  '''
+
+
+@G
+def ld_post_incr_Z(Rd):
+  '''
+  1001 000d dddd 0001
+  '''
+
+
+@G
+def ld_pre_decr_Z(Rd):
+  '''
+  1001 000d dddd 0010
+  '''
+
+
+@G
+def lpm(Rd):
+  '''
+  1001 000d dddd 0100
   '''
 
 
@@ -205,10 +266,24 @@ def breq(address):
   '''
 
 
+@A
+def brlo(address):
+  '''
+  1111 00kk kkkk k000
+  '''
+
+
 @G
 def lsr(Rd):
   '''
   1001 010d dddd 0110
+  '''
+
+
+@G
+def lsl(Rd):
+  '''
+  0000 11dd dddd dddd
   '''
 
 
@@ -240,6 +315,7 @@ def dec(Rd):
   '''
 
 
+@raw
 def ijmp():
   return 0b1001010000001001
 
@@ -248,6 +324,111 @@ def ijmp():
 def cp(Rd, Rr):
   '''
   0001 01rd dddd rrrr
+  '''
+
+
+@D
+def cpse(Rd, Rr):
+  '''
+  0001 00rd dddd rrrr
+  '''
+
+
+@D
+def cpc(Rd, Rr):
+  '''
+  0000 01rd dddd rrrr
+  '''
+
+
+@A
+def brsh(address):
+  '''
+  1111 01kk kkkk k000
+  '''
+
+
+@D
+def movw(Rd, Rr):
+  '''
+  0000 0001 dddd rrrr
+  '''
+
+
+@B
+def andi(register, immediate):
+  '''
+  0111 KKKK dddd KKKK
+  '''
+
+
+@H
+def sbis(register, bit):
+  '''
+  1001 1011 AAAA Abbb
+  '''
+
+
+@G
+def clr(Rd):
+  '''
+  0010 01dd dddd dddd
+  '''
+
+
+@F
+def push(Rr):
+  '''
+  1001 001r rrrr 1111
+  '''
+
+
+@G
+def pop(Rd):
+  '''
+  1001 000d dddd 1111
+  '''
+
+
+@D
+def or_(Rd, Rr):
+  '''
+  0010 10rd dddd rrrr
+  '''
+
+
+@G
+def swap(Rd):
+  '''
+  1001 010d dddd 0010
+  '''
+
+
+@B
+def adiw(register, immediate):
+  '''
+  1001 0110 KKdd KKKK
+  '''
+
+
+@B
+def sbiw(register, immediate):
+  '''
+  1001 0111 KKdd KKKK
+  '''
+
+
+@B
+def subi(register, immediate):
+  '''
+  0101 KKKK dddd KKKK
+  '''
+
+
+@D
+def mul(Rd, Rr):
+  '''
+  1001 11rd dddd rrrr
   '''
 
 

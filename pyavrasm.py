@@ -227,7 +227,8 @@ class InstructionsMixin(object):
     self._two('adiw', target, source)
 
   def lpm(self, target, source):
-    self._two('lpm', target, source)
+    assert source == 30, repr(source) # Must be Z
+    self._one('lpm', target)
 
   def cp(self, target, source):
     self._two('cp', target, source)
@@ -361,13 +362,14 @@ class AVRAssembly(InstructionsMixin, object):
       if op in ('db', 'dw'):
         print addr, 10 * ' ', op, len(data), 'bytes:', repr(data)
       else:
+        n, data = data
         try:
           fdata = '%-10x' % (data,)
         except TypeError:
-          print addr, 10 * '.', instruction
+          print addr, 10 * '.', instruction, repr(data)
         else:
           print addr, fdata, instruction
-      accumulator.append(data)
+      accumulator.append((n, data))
     return accumulator
 
   def _name_of_address_thunk(self, thunk):
@@ -423,5 +425,14 @@ if __name__ == '__main__':
 ##  print ; print ; print
 ##  pprint.pprint(dict(aa.data))
   print ; print ; print
-##  pprint.pprint(aa.pass2())
-  aa.pass2()
+  pprint.pprint(aa.pass2())
+##  data = aa.pass2()
+##  from intelhex import IntelHex
+##  ih = IntelHex()
+##  for addr, val in data.iteritems():
+##    addr = 2 * int(addr, 16)
+##    if isinstance(val, str):
+##      ih.puts(addr, val)
+##    else:
+##      print 'non-str', addr, repr(val)
+##  ih.dump()
