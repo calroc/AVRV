@@ -1,43 +1,21 @@
 import sys, pprint
 from collections import defaultdict
 from struct import pack
-from functools import wraps
 from myhdl import intbv, bin as biny
 from pass2 import ops
 from m328P_def import defs as G
-from util import update, int2addr, ibv, low, high, compute_dw, compute_db
-
-
-def instr(method):
-  op = method.__name__
-
-  @wraps(method)
-  def inner(self, arg0=None, arg1=None):
-    addr = self._get_here()
-
-    if arg0 is None:
-      assert arg1 is None
-      print 'assembling %s instruction at %s' % (op, addr)
-      instruction = (op,)
-      method(self)
-
-    elif arg1 is not None:
-      arg0, arg1 = method(self, arg0, arg1)
-      tname, taddress = self._name_or_addr(arg0)
-      name, address = self._name_or_addr(arg1)
-      print 'assembling %s instruction at %s %s <- %s' % (op, addr, tname, name)
-      instruction = (op, taddress, address)
-
-    else:
-      arg0 = method(self, arg0)
-      name, address = self._name_or_addr(arg0)
-      print 'assembling %s instruction at %s to %s' % (op, addr, name)
-      instruction = (op, address)
-
-    self.data[addr] = instruction
-    self.here += 2
-
-  return inner
+from util import (
+  update,
+  int2addr,
+  ibv,
+  low,
+  high,
+  compute_dw,
+  compute_db,
+  instr,
+  spec,
+  spec_reversed,
+  )
 
 
 class InstructionsMixin(object):
@@ -93,49 +71,21 @@ class InstructionsMixin(object):
   def sbrs(self, target, address):
     return target, address
 
+  @spec
   def st_post_incr(self, ptr, register):
-    if ptr == 26:
-      op = 'st_post_incr_X'
-    elif ptr == 28:
-      op = 'st_post_incr_Y'
-    elif ptr == 30:
-      op = 'st_post_incr_Z'
-    else:
-      raise Exception("Invalid target for st: %#x" % (ptr,))
-    self._one(op, register)
+    pass
 
+  @spec_reversed
   def ld_post_incr(self, register, ptr):
-    if ptr == 26:
-      op = 'ld_post_incr_X'
-    elif ptr == 28:
-      op = 'ld_post_incr_Y'
-    elif ptr == 30:
-      op = 'ld_post_incr_Z'
-    else:
-      raise Exception("Invalid target for ld: %#x" % (ptr,))
-    self._one(op, register)
+    pass
 
+  @spec_reversed
   def ld_pre_decr(self, register, ptr):
-    if ptr == 26:
-      op = 'ld_pre_decr_X'
-    elif ptr == 28:
-      op = 'ld_pre_decr_Y'
-    elif ptr == 30:
-      op = 'ld_pre_decr_Z'
-    else:
-      raise Exception("Invalid target for ld: %#x" % (ptr,))
-    self._one(op, register)
+    pass
 
+  @spec_reversed
   def lpm_post_incr(self, register, ptr):
-    if ptr == 26:
-      op = 'lpm_post_incr_X'
-    elif ptr == 28:
-      op = 'lpm_post_incr_Y'
-    elif ptr == 30:
-      op = 'lpm_post_incr_Z'
-    else:
-      raise Exception("Invalid target for lpm: %#x" % (ptr,))
-    self._one(op, register)
+    pass
 
   @instr
   def cpi(self, register, immediate):
