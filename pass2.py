@@ -83,18 +83,15 @@ def K(pattern, **values):
     accumulator.append(bit)
   data = concat(*reversed(accumulator))
   return n, data
-##  if n == 16:
-##    return pack('H', data)
-##  else:
-##    return pack('2H', data[32:16], data[16:])
 
 
 def raw(f):
-  @wraps(f)
-  def _inner(*a, **b):
-    data = f(*a, **b)
-    return pack('H', data)
-  return _inner
+  return f
+##  @wraps(f)
+##  def _inner(*a, **b):
+##    data = f(*a, **b)
+##    return pack('H', data)
+##  return _inner
 
 
 _mark = set(dir())
@@ -110,7 +107,7 @@ def jmp(address):
 
 @raw
 def cli():
-  return 0b1001010011111000
+  return 16, 0b1001010011111000
 
 
 @B
@@ -151,12 +148,12 @@ def mov(Rd, Rr):
 
 @raw
 def sei():
-  return 0b1001010001111000
+  return 16, 0b1001010001111000
 
 
 @raw
 def ret():
-  return 0b1001010100001000
+  return 16, 0b1001010100001000
 
 
 @A
@@ -182,11 +179,11 @@ def sbrs(register, bit):
 
 
 def dw(values, data):
-  return data
+  return -1, data
 
 
 def db(values, data):
-  return data
+  return -1, data
 
 
 @F
@@ -317,7 +314,7 @@ def dec(Rd):
 
 @raw
 def ijmp():
-  return 0b1001010000001001
+  return 16, 0b1001010000001001
 
 
 @D

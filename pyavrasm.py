@@ -358,18 +358,25 @@ class AVRAssembly(InstructionsMixin, object):
       instruction = self.data[addr]
       op, args = instruction[0], instruction[1:]
       opf = ops.get(op, lambda *args: args)
-      data = opf(*args)
+      n, data = opf(*args)
+
+      if n == -1:
+        bindata = data
+      elif n == 16:
+        bindata = pack('H', data)
+      else:
+        bindata = pack('2H', data[32:16], data[16:])
+
       if op in ('db', 'dw'):
         print addr, 10 * ' ', op, len(data), 'bytes:', repr(data)
       else:
-        n, data = data
         try:
           fdata = '%-10x' % (data,)
         except TypeError:
           print addr, 10 * '.', instruction, repr(data)
         else:
-          print addr, fdata, instruction
-      accumulator.append((n, data))
+          print addr, fdata, instruction, repr(bindata)
+      accumulator.append(bindata)
     return accumulator
 
   def _name_of_address_thunk(self, thunk):
