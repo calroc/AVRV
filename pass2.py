@@ -68,7 +68,7 @@ def H(func):
 
 def K(pattern, **values):
   counts = dict((variable_letter, 0) for variable_letter in values)
-  p = list(reversed(''.join(pattern.lower().split())))
+  p = ''.join(pattern.lower().split())[::-1]
   n = len(p)
   assert n in (16, 32), repr(pattern)
   accumulator = []

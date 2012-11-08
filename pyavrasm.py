@@ -286,7 +286,7 @@ class AVRAssembly(InstructionsMixin, object):
     del self.context['__builtins__']
 
   def pass2(self):
-    accumulator = []
+    accumulator = {}
     for addr in sorted(self.data):
       instruction = self.data[addr]
       op, args = instruction[0], instruction[1:]
@@ -309,7 +309,7 @@ class AVRAssembly(InstructionsMixin, object):
           print addr, 10 * '.', instruction, repr(data)
         else:
           print addr, fdata, instruction, repr(bindata)
-      accumulator.append(bindata)
+      accumulator[addr] = bindata
     return accumulator
 
   def _name_of_address_thunk(self, thunk):
@@ -345,15 +345,15 @@ if __name__ == '__main__':
 ##  pprint.pprint(dict(aa.context))
 ##  print ; print ; print
 ##  pprint.pprint(dict(aa.data))
-  print ; print ; print
-  pprint.pprint(aa.pass2())
-##  data = aa.pass2()
-##  from intelhex import IntelHex
-##  ih = IntelHex()
-##  for addr, val in data.iteritems():
-##    addr = 2 * int(addr, 16)
-##    if isinstance(val, str):
-##      ih.puts(addr, val)
-##    else:
-##      print 'non-str', addr, repr(val)
-##  ih.dump()
+##  print ; print ; print
+##  pprint.pprint(aa.pass2())
+  data = aa.pass2()
+  from intelhex import IntelHex
+  ih = IntelHex()
+  for addr, val in data.iteritems():
+    addr = int(addr, 16)
+    if isinstance(val, str):
+      ih.puts(addr, val)
+    else:
+      print 'non-str', addr, repr(val)
+  ih.dump()
