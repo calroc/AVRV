@@ -264,7 +264,7 @@ class AVRAssembly(InstructionsMixin, object):
     addr = self._get_here()
     data = compute_dw(values)
     nbytes = len(data)
-##    print 'assembling %i data words at %s for %s => %r' % (nbytes/2, addr, values, data)
+    print 'assembling %i data words at %s for %s => %r' % (nbytes/2, addr, values, data)
     self.data[addr] = ('dw', values, data)
     self.here += nbytes
 ##    values_bin_str = values_to_dw(values)
@@ -274,7 +274,7 @@ class AVRAssembly(InstructionsMixin, object):
     addr = self._get_here()
     data = compute_db(values)
     nbytes = len(data)
-##    print 'assembling %i data bytes at %s for %s => %r' % (nbytes, addr, values, data)
+    print 'assembling %i data bytes at %s for %s => %r' % (nbytes, addr, values, data)
     self.data[addr] = ('db', values, data)
     self.here += nbytes
 

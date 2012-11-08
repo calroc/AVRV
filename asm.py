@@ -74,10 +74,17 @@ ldi(r16, (1 << TXEN0) | (1 << RXEN0)) # Enable transmit/receive
 sts(UCSR0B, r16)
 ret()
 
-label(KEY)
-dw(0x0000)
-db(3, "key")
 
+_last_defined_word = 0x0000
+def word_header(label_, name):
+  global _last_defined_word
+  label(label_)
+  dw(_last_defined_word >> 1)
+  db(len(name), name)
+  _last_defined_word = label_
+
+
+word_header(KEY, "key") # = - - - - - - - - - - - -
 label(KEY_PFA)
 lds(Working, UCSR0A)
 sbrs(Working, RXC0)
@@ -89,27 +96,19 @@ lds(TOS, UDR0)
 rcall(ECHO_PFA)
 ret()
 
-
-label(DUP)
-dw(KEY)
-db(3, "dup")
+word_header(DUP, "dup") # = - - - - - - - - - - - -
 label(DUP_PFA)
 st_post_incr(Y, TOSL) # push TOSL onto data stack
 mov(TOSL, TOS)
 ret()
 
-label(EMIT)
-dw(DUP)
-db(4, "emit")
+word_header(EMIT, "emit") # = - - - - - - - - - - - -
 label(EMIT_PFA)
 rcall(ECHO_PFA)
 rcall(DROP_PFA)
 ret()
 
-label(ECHO) # = - - - - - - - - - - - -
-dw(EMIT)
-db(4, "echo")
-
+word_header(ECHO, "echo") # = - - - - - - - - - - - -
 label(ECHO_PFA)
 lds(Working, UCSR0A)
 sbrs(Working, UDRE0)
@@ -118,20 +117,14 @@ rjmp(ECHO_PFA)
 sts(UDR0, TOS)
 ret()
 
-label(DROP) # = - - - - - - - - - - - -
-dw(ECHO)
-db(4, "drop")
+word_header(DROP, "drop") # = - - - - - - - - - - - -
 label(DROP_PFA)
 mov(TOS, TOSL)
 popup()
 ret()
 
-
-label(WORD) # = - - - - - - - - - - - -
-dw(DROP)
-db(4, "word")
+word_header(WORD, "word") # = - - - - - - - - - - - -
 label(WORD_PFA)
-
 rcall(KEY_PFA)
 
 cpi(TOS, ' ')
@@ -160,9 +153,7 @@ brne(_find_length)
 mov(TOS, word_counter)
 ret()
 
-label(NUMBER) # = - - - - - - - - - - - -
-dw(WORD)
-db(6, "number")
+word_header(NUMBER, "number") # = - - - - - - - - - - - -
 label(NUMBER_PFA)
 
 ldi(ZL, low(buffer))
@@ -207,9 +198,7 @@ mov(TOSL, Working)
 mov(TOS, number_pointer)
 ret()
 
-label(LEFT_SHIFT_WORD) # = - - - - - - - - - - - -
-dw(NUMBER)
-db(3, "<<w")
+word_header(LEFT_SHIFT_WORD, "<<w") # = - - - - - - - - - - - -
 label(LEFT_SHIFT_WORD_PFA)
 mov(Working, TOS)
 clr(TOS)
@@ -225,9 +214,7 @@ ret()
 
 label(HEXDIGITS) ; db("0123456789abcdef")
 
-label(EMIT_HEX) # = - - - - - - - - - - - -
-dw(LEFT_SHIFT_WORD)
-db(7, "emithex")
+word_header(EMIT_HEX, "emithex") # = - - - - - - - - - - - -
 label(EMIT_HEX_PFA)
 
 push(ZH)
@@ -268,9 +255,7 @@ lpm(TOS, Z)
 rcall(EMIT_PFA)
 ret()
 
-label(DOTESS) # = - - - - - - - - - - - -
-dw(EMIT_HEX)
-db(2, ".s")
+word_header(DOTESS, ".s") # = - - - - - - - - - - - -
 label(DOTESS_PFA)
 
 rcall(DUP_PFA)
@@ -325,9 +310,7 @@ rcall(ECHO_PFA)
 
 rjmp(_inny)
 
-label(FIND) # = - - - - - - - - - - - -
-dw(DOTESS)
-db(4, "find")
+word_header(FIND, "find") # = - - - - - - - - - - - -
 label(FIND_PFA)
 
 mov(word_counter, TOS)
@@ -384,9 +367,7 @@ popupw() # ditch search term address
 popupw() # ditch LFA_next
 ret() # LFA_current
 
-label(TPFA) # = - - - - - - - - - - - -
-dw(FIND)
-db(4, ">pfa")
+word_header(TPFA, ">pfa") # = - - - - - - - - - - - -
 label(TPFA_PFA)
 
 adiw(X, 1)
@@ -405,9 +386,7 @@ inc(TOS)           # Account for the carry bit if set.
 label(_done_adding)
 ret()
 
-label(INTERPRET) # = - - - - - - - - - - - -
-dw(TPFA)
-db(9, "interpret")
+word_header(INTERPRET, "interpret") # = - - - - - - - - - - - -
 label(INTERPRET_PFA)
 
 rcall(WORD_PFA)
