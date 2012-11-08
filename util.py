@@ -29,7 +29,7 @@ def high(i):
 
 
 def ibv(i):
-  if isinstance(i, int):
+  if isinstance(i, (int, long)):
     return intbv(i)
   if not isinstance(i, intbv):
     raise ValueError

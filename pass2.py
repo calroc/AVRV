@@ -6,21 +6,21 @@ from myhdl import intbv, concat
 def A(func):
   @wraps(func)
   def inner(address):
-    return K(func.__doc__, k=address)
+    return K(func.__doc__, k=address >> 1)
   return inner
 
 
 def B(func):
   @wraps(func)
   def inner(register, address):
-    return K(func.__doc__, d=register, k=address)
+    return K(func.__doc__, d=register, k=address >> 1)
   return inner
 
 
 def B_reversed(func):
   @wraps(func)
   def inner(address, register):
-    return K(func.__doc__, d=register, k=address)
+    return K(func.__doc__, d=register, k=address >> 1)
   return inner
 
 
