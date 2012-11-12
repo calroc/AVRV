@@ -15,7 +15,7 @@ def update(a, b):
 
 
 def int2addr(i):
-  return intbv(i, min=0, max=ADDRESS_MAX)
+  return intbv(i, min=0, max=ADDRESS_MAX+1)
 
 
 def low(i):
