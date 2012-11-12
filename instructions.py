@@ -1,101 +1,8 @@
-from functools import wraps
-from struct import pack
-from myhdl import intbv, concat
+from util import A, B, B_reversed, C, D, E, F, G, H
 
 
-def A(func):
-  @wraps(func)
-  def inner(address):
-    return K(func.__doc__, k=address >> 1)
-  return inner
+_mark = set(dir()) ; _mark.add('_mark')
 
-
-def B(func):
-  @wraps(func)
-  def inner(register, address):
-    return K(func.__doc__, d=register, k=address >> 1)
-  return inner
-
-
-def B_reversed(func):
-  @wraps(func)
-  def inner(address, register):
-    return K(func.__doc__, d=register, k=address >> 1)
-  return inner
-
-
-def C(func):
-  @wraps(func)
-  def inner(io_port, register):
-    return K(func.__doc__, a=io_port, r=register)
-  return inner
-
-
-def D(func):
-  @wraps(func)
-  def inner(Rd, Rr):
-    return K(func.__doc__, d=Rd, r=Rr)
-  return inner
-
-
-def E(func):
-  @wraps(func)
-  def inner(Rr, bit):
-    return K(func.__doc__, r=Rr, b=bit)
-  return inner
-
-
-def F(func):
-  @wraps(func)
-  def inner(Rr):
-    return K(func.__doc__, r=Rr)
-  return inner
-
-
-def G(func):
-  @wraps(func)
-  def inner(Rd):
-    return K(func.__doc__, d=Rd)
-  return inner
-
-
-def H(func):
-  @wraps(func)
-  def inner(register, bit):
-    return K(func.__doc__, A=register, b=bit)
-  return inner
-
-
-def K(pattern, **values):
-  counts = dict((variable_letter, 0) for variable_letter in values)
-  p = ''.join(pattern.lower().split())[::-1]
-  n = len(p)
-  assert n in (16, 32), repr(pattern)
-  accumulator = []
-  for i, bit in enumerate(p):
-    if bit in '10':
-      accumulator.append(bool(int(bit)))
-      continue
-    assert bit in values, repr((i, bit, values))
-    index, value = counts[bit], values[bit]
-    counts[bit] += 1
-    bit = value[index]
-    accumulator.append(bit)
-  data = concat(*reversed(accumulator))
-  return n, data
-
-
-def raw(f):
-  return f
-##  @wraps(f)
-##  def _inner(*a, **b):
-##    data = f(*a, **b)
-##    return pack('H', data)
-##  return _inner
-
-
-_mark = set(dir())
-_mark.add('_mark')
 
 @A
 def jmp(address):
@@ -105,7 +12,6 @@ def jmp(address):
   '''
 
 
-@raw
 def cli():
   return 16, 0b1001010011111000
 
@@ -146,12 +52,10 @@ def mov(Rd, Rr):
   '''
 
 
-@raw
 def sei():
   return 16, 0b1001010001111000
 
 
-@raw
 def ret():
   return 16, 0b1001010100001000
 
@@ -312,7 +216,6 @@ def dec(Rd):
   '''
 
 
-@raw
 def ijmp():
   return 16, 0b1001010000001001
 
