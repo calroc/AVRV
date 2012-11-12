@@ -105,6 +105,7 @@ def spec(method):
 
 
 def spec_reversed(method):
+  method = spec(method)
   @wraps(method)
   def inner(self, ptr, register):
     return method(self, register, ptr)

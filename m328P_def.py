@@ -33,6 +33,7 @@ defs = dict((k, int2addr(v)) for k, v in dict(
 
     RXC0=7, # USART Receive Complete
     UDR0=0xc6,
+    UDRE0=5,
 
     ).iteritems())
 

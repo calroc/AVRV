@@ -92,7 +92,10 @@ class InstructionsMixin(object):
 
   @instr
   def cpi(self, register, immediate):
-    return register, immediate
+    if isinstance(immediate, str):
+      assert len(immediate) == 1, repr(immediate)
+      immediate = ord(immediate)
+    return register, immediate << 1
 
   @instr
   def brne(self, address):
@@ -201,7 +204,7 @@ class InstructionsMixin(object):
   def _one(self, op, address):
     name, address = self._name_or_addr(address)
     addr = self._get_here()
-##    print 'assembling %s instruction at %s to %s' % (op, addr, name)
+    print 'assembling %s instruction at %s to %s' % (op, addr, name)
     self.data[addr] = (op, address)
     self.here += 2
 
@@ -242,19 +245,19 @@ class AVRAssembly(InstructionsMixin, object):
     for k, v in defs.iteritems():
       if isinstance(v, int):
         defs[k] = v = ibv(v)
-##      print 'defining %s = %#x' % (k, v)
+      print 'defining %s = %#x' % (k, v)
     self.context.update(defs)
 
   def org(self, address):
     address = ibv(address)
-##    print 'setting org to %#06x' % (address,)
+    print 'setting org to %#06x' % (address,)
     update(self.here, address)
 
   def label(self, label_thunk, reserves=0):
     assert isinstance(label_thunk, intbv), repr(label_thunk)
     assert label_thunk == 0, repr(label_thunk)
     name = self._name_of_address_thunk(label_thunk)
-##    print 'label %s => %#06x' % (name, self.here)
+    print 'label %s => %#06x' % (name, self.here)
     update(label_thunk, self.here)
     if reserves:
       assert reserves > 0, repr(reserves)
@@ -295,7 +298,7 @@ class AVRAssembly(InstructionsMixin, object):
       op, args = instruction[0], instruction[1:]
 
       # Adjust addresses for relative ops.
-      if op in ('rcall', 'rjmp'):
+      if op in ('rcall', 'rjmp', 'brne', 'breq'):
         args = self._adjust(op, args, ibv(int(addr, 16)))
 
       opf = ops.get(op, lambda *args: args)
